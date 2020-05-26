@@ -1,14 +1,16 @@
 
 #include "pch.h"
 #include <iostream>
-#include "functions.h"
+#include "computor.h"
 
 using namespace std;
   
 
 int main()
 {
-	double res = compute_pi(100);
-    cout << "Pi with 100 iteration is " <<res; 
+	computor cmt(100);
+	double res = cmt.run();
+    cout << "Pi with 100 iteration is " <<res <<endl; 
+	system("pause");
 	return 0;
 }
