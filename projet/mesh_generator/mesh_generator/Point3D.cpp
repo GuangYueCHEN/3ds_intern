@@ -35,7 +35,7 @@ void Point3D::print_position() const
 	std::cout << "Printing point position:" << std::endl << "x:" << m_Coords[0] << ", y:" << m_Coords[1] << ", z:" << m_Coords[2] << std::endl;
 }
 
-double Point3D::distance_with(const Point3D & point) 
+double Point3D::distance_with(const Point3D & point)  const
 {
   return std::sqrt
   (

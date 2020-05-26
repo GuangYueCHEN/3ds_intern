@@ -18,7 +18,7 @@ public:
   double get_z() const;
   void print_position() const; // print x, y, z
 
-  double distance_with(const Point3D & point); // distance with another vertice
+  double distance_with(const Point3D & point) const; // distance with another vertice
 
   inline friend Point3D operator+(const Point3D & p1, const Point3D & p2) ;
 
