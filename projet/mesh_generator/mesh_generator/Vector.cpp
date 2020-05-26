@@ -1,59 +1,71 @@
 #include "Vector.h"
+#include <cmath>
+#include <algorithm>
 
-Vector::Vector() {
-	x = y = z = 0;
-}
-Vector::Vector(Point3D from, Point3D to) {
-	x = to.get_x() - from.get_x();
-	y = to.get_y() - from.get_y();
-	z = to.get_z() - from.get_z();
-}
 
-Vector::Vector(double axis_x, double axis_y, double axis_z) {
-	x = axis_x;
-	y = axis_y;
-	z = axis_z;
+Vector::Vector() : m_Coords{ 0.,0.,0. }
+{
+	
+}
+Vector::Vector(Point3D from, Point3D to) 
+{
+  for (size_t i = 0; i < 3; i++)
+    m_Coords[i] = to.get_coord(i) - from.get_coord(i);
 }
 
-Vector::Vector(const Vector & vec) {
-	this->x = vec.x;
-	this->y = vec.y;
-	this->z = vec.z;
+Vector::Vector(double axis_x, double axis_y, double axis_z) : m_Coords{ axis_x, axis_y, axis_z }
+{
+	
 }
 
-double Vector::norme1() {
-	return x+y+z;
+double Vector::norme1() 
+{
+  double res = 0;
+  for (size_t i = 0; i < 3; i++)
+    res += std::abs(m_Coords[i]);
+  return res;
+     
 }
 
-double Vector::norme2() {
-	return std::sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2));
+double Vector::norme2() 
+{
+  double res = 0;
+  for (size_t i = 0; i < 3; i++)
+    res += m_Coords[i] * m_Coords[i];
+  return std::sqrt(res);
 }
 
 
-double Vector::norme_infini() {
-	return std::max( std::max(abs(x),abs(y)), abs(z));
+double Vector::norme_infini() 
+{
+  return *std::max_element(m_Coords.begin(), m_Coords.end(), [](double a, double b) {return std::abs(a) < std::abs(b); });
 }
 
-double Vector::get_x() {
-	return x;
+double Vector::get_x() const
+{
+	return m_Coords [0];
 }
 
-double Vector::get_y() {
-	return y;
+double Vector::get_y() const
+{
+  return m_Coords[1];
 }
 
-double Vector::get_z() {
-	return z;
+double Vector::get_z() const
+{
+  return m_Coords[2];
 }
 
-double Vector::operator * (const Vector & vec) {
-	return this->x*vec.x + this->y*vec.y + this->z*vec.z;
+double Vector::operator * (const Vector & vec) const
+{
+  double res = 0.;
+  for (size_t i = 0; i < 3; i++)
+    res += vec.get_coord(i) * get_coord(i);
+  return res;
 }
 
-Vector Vector::operator ^ (const Vector & vec) {
-	Vector dot;
-	dot.x = this->y*vec.z - this->z*vec.y;
-	dot.y = this->z*vec.x - this->x*vec.z;
-	dot.z = this->x*vec.y - this->y*vec.x;
-	return dot;
+Vector Vector::operator ^ (const Vector & vec) const
+{
+  return Vector(get_y()*vec.get_z() - this->get_z()*vec.get_y(), this->get_z()*vec.get_x() - this->get_x()*vec.get_z(), this->get_x()*vec.get_y() - this->get_y()*vec.get_x());
+
 }

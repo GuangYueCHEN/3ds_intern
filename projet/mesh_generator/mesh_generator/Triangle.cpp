@@ -1,19 +1,17 @@
 #include "Triangle.h"
 
-Triangle::Triangle(Point3D pts[], size_t nb_points):Polygon(pts,nb_points) {
-	this->nb_points = nb_points;
-	if (nb_points != 3) {
-		throw "error: can not built Triangle";
-	}
-	else {
-		points = new Point3D[3];
-		for (int i = 0; i < 3; i++) {
-			points[i] = pts[i];
-		}
-	}
+#include "Point3D.h"
+#include "Vector.h"
+#include "Plan.h"
+
+#include <assert.h>
+
+Triangle::Triangle(const std::vector<Point3D> & iPoints)
+  : Polygon(iPoints)
+{
 }
 
-bool SameSide(Point3D A, Point3D B, Point3D C, Point3D P)
+bool Triangle::SameSide(const Point3D & A, const Point3D & B, const Point3D & C, const Point3D & P)
 {
 	Vector AB(A,B);
 	Vector AC(A,C);
@@ -28,13 +26,18 @@ bool SameSide(Point3D A, Point3D B, Point3D C, Point3D P)
 
 
 
-bool Triangle::on_triangle(Point3D pt){
-	Plan plan(points[0], points[1], points[2]);
-	if (!plan.plan_support(pt)){
+bool Triangle::plan_support(const Point3D & pt) const
+{
+  assert(m_Points.size() >= 3);
+  Plan plan(m_Points[0], m_Points[1], m_Points[2]);
+	if (!plan.is_in_plane(pt))
+  {
 		return false;
-	} else {
-		return SameSide(points[0], points[1], points[2], pt) &&
-		SameSide(points[1], points[2], points[0], pt) &&
-		SameSide(points[2], points[0], points[1], pt);
+	} 
+  else 
+  {
+		return SameSide(m_Points[0], m_Points[1], m_Points[2], pt) &&
+		SameSide(m_Points[1], m_Points[2], m_Points[0], pt) &&
+		SameSide(m_Points[2], m_Points[0], m_Points[1], pt);
 	}
 }

@@ -1,40 +1,48 @@
+#include "Point3D.h"
+#include "Vector.h"
+
 #include <cmath>
 #include <iostream>
-#include "Point3D.h"
 
-Point3D::Point3D() {
-	x = 0.0;
-	y = 0.0;
-	z = 0.0;
-}
 
-Point3D::Point3D(double axis_x, double axis_y, double axis_z) {
-	x = axis_x;
-	y = axis_y;
-	z = axis_z;
+Point3D::Point3D() : m_Coords{0.,0.,0.}
+{
+	
 }
 
-Point3D::Point3D(const Point3D & point) {
-	this->x = point.x;
-	this->y = point.y;
-	this->z = point.z;
+Point3D::Point3D(double axis_x, double axis_y, double axis_z) : m_Coords{axis_x, axis_y, axis_z}
+{
+	
 }
 
-double Point3D::get_x() {
-	return x;
+double Point3D::get_x() const
+{
+	return m_Coords[0];
 }
 
-double Point3D::get_y() {
-	return y;
+double Point3D::get_y() const
+{
+	return m_Coords[1];
 }
 
-double Point3D::get_z() {
-	return z;
+double Point3D::get_z() const
+{
+	return m_Coords[2];
 }
 
-void Point3D::print_position(){
-	std::cout << "Printing point position:" << std::endl << "x:" << x << ", y:" << this->y << ", z:" << z << std::endl;
+void Point3D::print_position() const
+{
+	std::cout << "Printing point position:" << std::endl << "x:" << m_Coords[0] << ", y:" << m_Coords[1] << ", z:" << m_Coords[2] << std::endl;
 }
-double Point3D::distance_with(Point3D point) {
-	return std::sqrt(pow(point.get_x() - this->x,2) + pow(point.get_y() - this->y,2) + pow(point.get_z() - this->z,2));
+
+double Point3D::distance_with(const Point3D & point) 
+{
+  return std::sqrt
+  (
+    (point.get_x() - m_Coords[0])*(point.get_x() - m_Coords[0]) + 
+    (point.get_y() - m_Coords[1])*(point.get_y() - m_Coords[1]) + 
+    (point.get_z() - m_Coords[2])*(point.get_z() - m_Coords[2])
+  );
 }
+
+
