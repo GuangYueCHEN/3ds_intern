@@ -28,7 +28,7 @@ Plan::Plan(const Point3D & pt1, const Vector & normal)
 
 bool Plan::is_in_plane(const Point3D & pt) const
 {
-  if (pt.get_x()*a + pt.get_y()*b + pt.get_z()*c + d == 0) 
+  if (std::abs (pt.get_x()*a + pt.get_y()*b + pt.get_z()*c + d) < 1e-10) 
   {
     return true;
   }
@@ -37,11 +37,8 @@ bool Plan::is_in_plane(const Point3D & pt) const
     return false;
   }
 }
+
 Vector Plan::normal_vector() const
 {
   return Vector {a, b, c};
 }
-
-/*x-x1,y-y1,z-z1*/
-/*x2,y2,z2*/
-/*x2x-x2x1+y2y-y2y1+z2z-z2z1*/

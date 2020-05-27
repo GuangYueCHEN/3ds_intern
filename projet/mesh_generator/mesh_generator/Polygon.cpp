@@ -4,7 +4,7 @@
 
 Polygon::Polygon(const std::vector<Point3D> & iPoints) : m_Points(iPoints) {}
 
-Point3D Polygon::get_point(size_t index) 
+Point3D Polygon::get_point(size_t index) const
 {
   if (index >= m_Points.size()) 
   {

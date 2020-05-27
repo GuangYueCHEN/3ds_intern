@@ -54,17 +54,3 @@ double Vector::get_z() const
 {
   return m_Coords[2];
 }
-
-double Vector::operator * (const Vector & vec) const
-{
-  double res = 0.;
-  for (size_t i = 0; i < 3; i++)
-    res += vec.get_coord(i) * get_coord(i);
-  return res;
-}
-
-Vector Vector::operator ^ (const Vector & vec) const
-{
-  return Vector(get_y()*vec.get_z() - get_z()*vec.get_y(), get_z()*vec.get_x() - get_x()*vec.get_z(), get_x()*vec.get_y() - get_y()*vec.get_x());
-
-}

@@ -116,6 +116,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Mesh.cpp" />
     <ClCompile Include="Plan.cpp" />
     <ClCompile Include="Point3D.cpp" />
     <ClCompile Include="Polygon.cpp" />
@@ -123,6 +124,7 @@
     <ClCompile Include="Vector.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Mesh.h" />
     <ClInclude Include="Triangle.h" />
     <ClInclude Include="Plan.h" />
     <ClInclude Include="Point3D.h" />

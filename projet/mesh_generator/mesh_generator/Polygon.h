@@ -13,14 +13,14 @@ public:
 	/*Constructors*/
 	Polygon(const std::vector<Point3D> & iPoints); //throw error
 	Polygon(const Polygon & pol) = default;
-  ~Polygon() {};
+	~Polygon() {};
 
-	Point3D get_point(size_t index); // get the vertice
+	Point3D get_point(size_t index) const; // get the vertice
 
   // a ecrire
 	// Plan plan_support(); // if all of vertices in this plan, return true;
 	
-  virtual bool plan_support(const Point3D & pt) const; // If a new point on the surface, return true;
+	virtual bool plan_support(const Point3D & pt) const; // If a new point on the surface, return true;
 	Point3D center() const;
 	double area() const;
 	
