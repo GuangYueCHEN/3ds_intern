@@ -71,7 +71,9 @@ int main() {
 	}
 
 	cout << "testing if model is closed" << endl;
-    cout << mesh.is_colsed() << endl;
+  cout << mesh.is_closed() << endl;
+
+  bool b = mesh.is_closed_2();
 
 	cout << "mesh volume" << endl;
 	cout << mesh.volume() << endl;

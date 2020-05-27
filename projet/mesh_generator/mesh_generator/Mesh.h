@@ -19,7 +19,8 @@ public:
 	Point3D near_with(const Point3D & pt) const; //get the nearest point
 
 	/*methods*/
-	bool is_colsed() const;
+	bool is_closed() const;
+  bool is_closed_2() const;
 	double volume() const;
 	int point_position(const Point3D & pt) const; //0: on mesh; 1 : in mesh; -1 : out of mesh
 	Mesh remeshing(const Point3D & near, const Point3D & pt) const; //remeshing mesh with replaced Point3

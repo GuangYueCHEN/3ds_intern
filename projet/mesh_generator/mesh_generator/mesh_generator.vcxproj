@@ -125,6 +125,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Mesh.h" />
+    <ClInclude Include="SimpleShapeGenerator.h" />
     <ClInclude Include="Triangle.h" />
     <ClInclude Include="Plan.h" />
     <ClInclude Include="Point3D.h" />
