@@ -5,90 +5,37 @@
 #include "Plan.h"
 #include "Triangle.h"
 #include "Mesh.h"
+#include "SimpleShapeGenerator.h"
 
 #include <vector>
 
 using namespace std;
 int main() {
 
-  Point3D a(1., 0., 0.);
-  Point3D b(0., 1., 0.);
-  Point3D c(0., 0., 1.);
-  Point3D d(0., 0., 0.);
-  Point3D in(0.1, 0.1, 0.1);
-  Point3D out(-1, -1, -1);
+
 
   try
   {
 
-    std::vector<Point3D> pts;
-	std::vector<Triangle> tris;
-    pts.reserve(3);
-    pts.push_back(a);
-    pts.push_back(b);
-    pts.push_back(c);
-	Triangle tri(pts);
-	tris.push_back(tri);
-	pts.clear();
+	  /*
+	  Mesh mesh = GenerateSphere(2, 3, 3);
 
-	pts.push_back(d);
-	pts.push_back(b);
-	pts.push_back(c);
-	tri = Triangle(pts);
-	tris.push_back(tri);
-	pts.clear();
+	  for(size_t i = 0; i < mesh.nb_triangles(); i++){
+		  std::cout << "the " << i << "th triangle:" << std::endl;
+		  mesh.get_triangle(i).get_point(0).print_position();
 
-	pts.push_back(a);
-	pts.push_back(b);
-	pts.push_back(d);
-	tri = Triangle(pts);
-	tris.push_back(tri);
-	pts.clear();
+		  mesh.get_triangle(i).get_point(1).print_position();
 
-	pts.push_back(a);
-	pts.push_back(d);
-	pts.push_back(c);
-	tri = Triangle(pts);
-	tris.push_back(tri);
+		  mesh.get_triangle(i).get_point(2).print_position();
+	  }*/
+	  CubeGenerator generator(2.);
+	  Mesh mesh = generator.run();
+	  std::cout << mesh.is_closed_2() << endl;
 
-	cout << "construct mesh model" << endl;
-	Mesh mesh(tris);
-	for (const auto  & tri: tris) {
-		tri.get_point(0).print_position();
-		tri.get_point(1).print_position();
-		tri.get_point(2).print_position();
-	}
+	  SphereGenerator generator2(2., 5, 5);
+	  Mesh mesh2 = generator2.run();
+	  std::cout << mesh2.is_closed_2() << endl;
 
-
-	cout << "remeshing model" << endl;
-	Mesh remesh = mesh.remeshing(d, out);
-	for (size_t i = 0; i < mesh.nb_triangles(); i++)
-	{
-		Triangle tri(remesh.get_triangle(i));
-		tri.get_point(0).print_position();
-		tri.get_point(1).print_position();
-		tri.get_point(2).print_position();
-	}
-
-	cout << "testing if model is closed" << endl;
-  cout << mesh.is_closed() << endl;
-
-  bool b = mesh.is_closed_2();
-
-	cout << "mesh volume" << endl;
-	cout << mesh.volume() << endl;
-
-	cout << "remesh volume" << endl;
-	cout << remesh.volume() << endl;
-
-	cout << "testing inner point position" << endl;
-	cout << mesh.point_position(in) << endl;
-
-	cout << "testing outside point position" << endl;
-	cout << mesh.point_position(out) << endl;
-
-	cout << "testing onsurface point position" << endl;
-	cout << mesh.point_position(d) << endl;
   }
   catch (const char* msg) {
     cerr << msg << endl;

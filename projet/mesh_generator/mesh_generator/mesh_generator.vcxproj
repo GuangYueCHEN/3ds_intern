@@ -85,6 +85,10 @@
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
     </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>
+      </AdditionalLibraryDirectories>
+    </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -120,10 +124,12 @@
     <ClCompile Include="Plan.cpp" />
     <ClCompile Include="Point3D.cpp" />
     <ClCompile Include="Polygon.cpp" />
+    <ClCompile Include="SimpleShapeGenerator.cpp" />
     <ClCompile Include="Triangle.cpp" />
     <ClCompile Include="Vector.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="constant.h" />
     <ClInclude Include="Mesh.h" />
     <ClInclude Include="SimpleShapeGenerator.h" />
     <ClInclude Include="Triangle.h" />

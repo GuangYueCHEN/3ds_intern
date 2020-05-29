@@ -5,6 +5,8 @@ VisualStudioVersion = 15.0.28307.645
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mesh_generator", "mesh_generator\mesh_generator.vcxproj", "{28A7FD68-49B9-453F-A988-B86EF6DBFD15}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "UnitTest1", "UnitTest1\UnitTest1.vcxproj", "{4CF43966-19E7-4096-A8C6-468F0D393738}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -21,6 +23,14 @@ Global
 		{28A7FD68-49B9-453F-A988-B86EF6DBFD15}.Release|x64.Build.0 = Release|x64
 		{28A7FD68-49B9-453F-A988-B86EF6DBFD15}.Release|x86.ActiveCfg = Release|Win32
 		{28A7FD68-49B9-453F-A988-B86EF6DBFD15}.Release|x86.Build.0 = Release|Win32
+		{4CF43966-19E7-4096-A8C6-468F0D393738}.Debug|x64.ActiveCfg = Debug|x64
+		{4CF43966-19E7-4096-A8C6-468F0D393738}.Debug|x64.Build.0 = Debug|x64
+		{4CF43966-19E7-4096-A8C6-468F0D393738}.Debug|x86.ActiveCfg = Debug|Win32
+		{4CF43966-19E7-4096-A8C6-468F0D393738}.Debug|x86.Build.0 = Debug|Win32
+		{4CF43966-19E7-4096-A8C6-468F0D393738}.Release|x64.ActiveCfg = Release|x64
+		{4CF43966-19E7-4096-A8C6-468F0D393738}.Release|x64.Build.0 = Release|x64
+		{4CF43966-19E7-4096-A8C6-468F0D393738}.Release|x86.ActiveCfg = Release|Win32
+		{4CF43966-19E7-4096-A8C6-468F0D393738}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

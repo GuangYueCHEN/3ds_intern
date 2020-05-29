@@ -1,5 +1,6 @@
 #include "Mesh.h"
 #include "Vector.h"
+#include "constant.h"
 #include <iostream>
 #include <assert.h>
 #include <cmath>
@@ -29,7 +30,7 @@ size_t Mesh::point_reduce(const  std::vector <Point3D> & pts)
 		size_t same = 0;
 		for (const auto & pt : pts)
 		{
-			if (p.distance_with(pt) < 1e-6)
+			if (p.distance_with(pt) < Tolerance)
 			{
 				same++;
 			}
@@ -156,7 +157,7 @@ Mesh Mesh::remeshing(const Point3D & near, const Point3D & pt) const
 		pts.reserve(3);
 		for (size_t i = 0; i < 3; i++)
 		{
-			if (near.distance_with(tri.get_point(i)) < 1e-10)
+			if (near.distance_with(tri.get_point(i)) < Tolerance)
 			{
 				pts.push_back(pt);
 			}
