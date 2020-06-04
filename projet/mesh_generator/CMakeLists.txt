@@ -48,4 +48,12 @@ add_test(mesh_test_is_closed ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_test
 add_test(mesh_test_is_closed_2 ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_test_is_closed_2)
 add_test(mesh_test_volume ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_test_volume)
 add_test(mesh_test_point_position ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_test_point_position)
+add_test(point_distance_with ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} point_distance_with)
+add_test(polygon_area ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} polygon_area)
 add_test(plan_test ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} plan_test)
+add_test(generate_cube ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} generate_cube)
+add_test(generate_sphere ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} generate_sphere)
+add_test(triangle_plan_support ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} triangle_plan_support)
+add_test(test_loader ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} test_loader)
+add_test(test_write ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} test_write)
+
