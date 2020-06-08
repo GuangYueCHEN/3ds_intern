@@ -56,4 +56,5 @@ add_test(generate_sphere ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} generate_sphe
 add_test(triangle_plan_support ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} triangle_plan_support)
 add_test(test_loader ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} test_loader)
 add_test(test_write ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} test_write)
+add_test(mesh_test_augmentation ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_test_augmentation)
 

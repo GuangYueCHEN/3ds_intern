@@ -196,3 +196,95 @@ int Mesh::point_position(const Point3D & pt) const
 	}
 
 }
+
+/*
+void Mesh::augmentation(const size_t & n_triangles)
+{	
+	assert((n_triangles - nb_triangles()) % 2 == 0);
+	assert(n_triangles < nb_triangles()*3);
+	std::vector<Triangle> tris;
+	tris.reserve(n_triangles);
+	std::vector<size_t> indexs;
+	indexs.reserve(n_triangles - nb_triangles());
+	for (size_t j = 0; j < n_triangles - nb_triangles(); j += 2)
+	{
+		double max = 0.;
+		size_t index_max = 0;
+		for (size_t i =0; i< nb_triangles(); i++)
+		{
+			double area = m_triangles[i].area();
+			auto it = std::find(indexs.begin(), indexs.end(), i);
+			if (area > max && it == indexs.end())
+			{
+				max = area;
+				index_max = i;
+			}
+		}
+		indexs.push_back(index_max);
+		Triangle tri = m_triangles[index_max];
+		Point3D center = tri.center();
+		tris.push_back(Triangle({ center, tri.get_point(0), tri.get_point(1) }));
+		tris.push_back(Triangle({ center, tri.get_point(0), tri.get_point(2) }));
+		tris.push_back(Triangle({ center, tri.get_point(1), tri.get_point(2) }));
+	}
+	for (size_t i = 0; i < nb_triangles(); i++)
+	{
+		auto it = std::find(indexs.begin(), indexs.end(), i);
+		if ( it == indexs.end())
+		{
+			tris.push_back(m_triangles[i]);
+		}
+	}
+	m_triangles = tris;
+}
+*/
+
+
+void Mesh::augmentation(const size_t & n_triangles)
+{
+	assert((n_triangles - nb_triangles()) % 2 == 0);
+	std::vector<Triangle> tris;
+	tris.reserve(n_triangles);
+	std::vector<Triangle> tris2;
+	tris2.reserve(n_triangles);
+	for (Triangle & triangle : m_triangles)
+	{
+		tris.push_back(triangle);
+	}
+	size_t size = nb_triangles();
+	for (size_t j = 0; j < n_triangles - nb_triangles(); j += 2)
+	{
+		double max = 0.;
+		size_t index_max = 0;
+		for (size_t i = 0; i < size; i++)
+		{
+			double area = tris[i].area();
+			if (area > max)
+			{
+				max = area;
+				index_max = i;
+			}
+		}
+		
+		for (size_t i = 0; i < size; i++)
+		{
+			if (i==index_max)
+			{
+				Triangle tri = tris[i];
+				Point3D center = tri.center();
+				tris2.push_back(Triangle({ center, tri.get_point(0), tri.get_point(1) }));
+				tris2.push_back(Triangle({ center, tri.get_point(0), tri.get_point(2) }));
+				tris2.push_back(Triangle({ center, tri.get_point(1), tri.get_point(2) }));
+			}
+			else
+			{
+				tris2.push_back(tris[i]);
+			}
+		}
+		size += 2;
+		tris = tris2;
+		tris2.clear();
+	}
+
+	m_triangles = tris;
+}

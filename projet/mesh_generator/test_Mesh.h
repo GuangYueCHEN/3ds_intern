@@ -38,3 +38,17 @@ TEST_CASE("mesh_test_point_position")
   REQUIRE(mesh.point_position(d) == 0);
 }
 
+TEST_CASE("mesh_test_augmentation")
+{
+	Mesh mesh = generate_mesh();
+	mesh.augmentation(6);
+	REQUIRE(mesh.nb_triangles() == 6);
+	REQUIRE(true == mesh.is_closed_2());
+
+	Mesh mesh2 = generate_mesh();
+	mesh2.augmentation(14);
+	REQUIRE(mesh2.nb_triangles() == 14);
+	REQUIRE(true == mesh2.is_closed_2());
+
+}
+
