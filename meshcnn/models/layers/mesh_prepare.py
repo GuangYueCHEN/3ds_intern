@@ -51,12 +51,19 @@ def from_scratch(file, opt):
     mesh_data.filename = 'unknown'
     mesh_data.edge_lengths = None
     mesh_data.edge_areas = []
-    mesh_data.vs, faces = fill_from_file(mesh_data, file)
-    mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
-    faces, face_areas = remove_non_manifolds(mesh_data, faces)
-    if opt.edge_split:
-        faces, face_areas = split_edge(mesh_data, faces, face_areas, opt)
+
+    obj_file = os.path.join(opt.dataroot, 'splited/' + os.path.basename(file))
+    if opt.edge_split and os.path.isfile(obj_file):
+        mesh_data.vs, faces = fill_from_file(mesh_data, obj_file)
         mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
+        faces, face_areas = remove_non_manifolds(mesh_data, faces)
+    else:
+        mesh_data.vs, faces = fill_from_file(mesh_data, file)
+        mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
+        faces, face_areas = remove_non_manifolds(mesh_data, faces)
+        if opt.edge_split:
+            faces, face_areas = split_edge(mesh_data, faces, face_areas, opt)
+            mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
     if opt.num_aug > 1:
         faces = augmentation(mesh_data, opt, faces)
     build_gemm(mesh_data, faces, face_areas)
@@ -89,6 +96,7 @@ def split_edge(mesh_data, faces, face_areas, opt):
     print(len(faces))
     """
     seg_file = os.path.join(opt.dataroot, 'seg/' + os.path.splitext(mesh_data.filename)[0] + '.eseg')
+    obj_file = os.path.join(opt.dataroot, 'splited/' + mesh_data.filename)
     sseg_file = os.path.join(opt.dataroot, 'sseg/' + os.path.splitext(mesh_data.filename)[0] + '.seseg')
     assert(os.path.isfile(seg_file))
     seg_labels = read_seg(seg_file)
@@ -110,8 +118,8 @@ def split_edge(mesh_data, faces, face_areas, opt):
         sseg_labels = np.append(sseg_labels, sseg_labels[index].reshape(1, sseg_labels.shape[1]), axis=0)
         for face_id, face in enumerate(faces):
             for i in range(3):
-                if(face[i]==v2 and face[(i+1)%3]==v1 or face[i]==v2 and face[(i+2)%3]==v1):
-                    v0 = face[(i+2)%3] if face[(i+1)%3] == v1 else face[(i+1)%3]
+                if face[i]==v2 and face[(i+1)%3]==v1 :
+                    v0 = face[(i+2)%3]
                     edges.append([v0, v3])
                     i0 = edges.index([v0, v1]) if v0 < v1 else edges.index([v1, v0])
                     i1 = edges.index([v0, v2]) if v0 < v2 else edges.index([v2, v0])
@@ -121,9 +129,24 @@ def split_edge(mesh_data, faces, face_areas, opt):
                     sseg_labels = np.append(sseg_labels, label_sseg.reshape(1, sseg_labels.shape[1]), axis=0)
                     edge_lengths.append(np.linalg.norm(mesh_data.vs[v3] - mesh_data.vs[v0], ord=2))
                     faces[face_id] = [v0, v2, v3]
-                    faces = np.append(faces, np.array([v0, v1, v3]).reshape(1, 3), axis=0)
+                    faces = np.append(faces, np.array([v3, v1, v0]).reshape(1, 3), axis=0)
                     face_areas[face_id] = face_areas[face_id]/2
                     face_areas = np.append(face_areas, face_areas[face_id])
+                elif face[i]==v2 and face[(i+2)%3]==v1:
+                    v0 = face[(i+1)%3]
+                    edges.append([v0, v3])
+                    i0 = edges.index([v0, v1]) if v0 < v1 else edges.index([v1, v0])
+                    i1 = edges.index([v0, v2]) if v0 < v2 else edges.index([v2, v0])
+                    label = vote(seg_labels[i0], seg_labels[i1], seg_labels[index])
+                    label_sseg = vote_sseg(sseg_labels[i0], sseg_labels[i1], sseg_labels[index])
+                    seg_labels = np.append(seg_labels, label)
+                    sseg_labels = np.append(sseg_labels, label_sseg.reshape(1, sseg_labels.shape[1]), axis=0)
+                    edge_lengths.append(np.linalg.norm(mesh_data.vs[v3] - mesh_data.vs[v0], ord=2))
+                    faces[face_id] = [v2, v0, v3]
+                    faces = np.append(faces, np.array([v0, v1, v3]).reshape(1, 3), axis=0)
+                    face_areas[face_id] = face_areas[face_id] / 2
+                    face_areas = np.append(face_areas, face_areas[face_id])
+
     """
     print(mesh_data.filename)
     print(len(edge_lengths))
@@ -132,10 +155,21 @@ def split_edge(mesh_data, faces, face_areas, opt):
     print(seg_labels.shape)
     print(sseg_labels.shape)
     """
-
+    write_obj(mesh_data.vs, faces, obj_file);
     write_seg(seg_labels, seg_file);
     write_sseg(sseg_labels, sseg_file);
     return faces, face_areas
+
+def write_obj(vs, faces, obj_file):
+    if not os.path.isdir( os.path.dirname(obj_file)):
+        os.mkdir(os.path.dirname(obj_file))
+    with open(obj_file, "w") as f:
+        f.write("g defaul\n")
+        for v in vs :
+            f.write("v " + str(v[0]) + " " + str(v[1]) + " " + str(v[2]) + "\n")
+        for face in faces:
+            f.write("f " + str(face[0]+1) + " " + str(face[1]+1) + " " + str(face[2]+1) + "\n")
+    return
 
 def read_seg(seg):
     seg_labels = np.loadtxt(open(seg, 'r'), dtype='float64')
@@ -154,6 +188,8 @@ def write_seg(labels, seg):
     write_file = os.path.join(dir_name, prefix)
     if not os.path.isdir(dir_name):
         os.mkdir(dir_name)
+    if os.path.isfile(write_file):
+        return
     np.savetxt(write_file, labels, delimiter='\n', fmt='%.1e')
 
 
@@ -165,6 +201,8 @@ def write_sseg(labels, sseg_file):
     write_file = os.path.join(dir_name, prefix)
     if not os.path.isdir(dir_name):
         os.mkdir(dir_name)
+    if os.path.isfile(write_file):
+        return
     np.savetxt(write_file, labels/sum, delimiter=' ', newline='\n', fmt='%.2e')
 
 
