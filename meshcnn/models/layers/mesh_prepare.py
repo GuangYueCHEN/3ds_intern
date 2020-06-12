@@ -54,6 +54,9 @@ def from_scratch(file, opt):
     mesh_data.vs, faces = fill_from_file(mesh_data, file)
     mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
     faces, face_areas = remove_non_manifolds(mesh_data, faces)
+    if opt.edge_split:
+        faces, face_areas = split_edge(mesh_data, faces, face_areas, opt)
+        mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
     if opt.num_aug > 1:
         faces = augmentation(mesh_data, opt, faces)
     build_gemm(mesh_data, faces, face_areas)
@@ -61,6 +64,127 @@ def from_scratch(file, opt):
         post_augmentation(mesh_data, opt)
     mesh_data.features = extract_features(mesh_data)
     return mesh_data
+
+def split_edge(mesh_data, faces, face_areas, opt):
+    edge2key = dict()
+    edges = []
+    edges_count = 0
+    for face_id, face in enumerate(faces):
+        faces_edges = []
+        for i in range(3):
+            cur_edge = (face[i], face[(i + 1) % 3])
+            faces_edges.append(cur_edge)
+        for idx, edge in enumerate(faces_edges):
+            edge = tuple(sorted(list(edge)))
+            faces_edges[idx] = edge
+            if edge not in edge2key:
+                edge2key[edge] = edges_count
+                edges.append(list(edge))
+                edges_count += 1
+    arr_edges = np.asarray(edges)
+    edge_lengths = np.linalg.norm(mesh_data.vs[arr_edges[:, 0]] - mesh_data.vs[arr_edges[:, 1]], ord=2, axis=1).tolist()
+    """
+    print(mesh_data.filename)
+    print(len(edge_lengths))
+    print(len(faces))
+    """
+    seg_file = os.path.join(opt.dataroot, 'seg/' + os.path.splitext(mesh_data.filename)[0] + '.eseg')
+    sseg_file = os.path.join(opt.dataroot, 'sseg/' + os.path.splitext(mesh_data.filename)[0] + '.seseg')
+    assert(os.path.isfile(seg_file))
+    seg_labels = read_seg(seg_file)
+    sseg_labels = read_sseg(sseg_file)
+    for i in np.arange(edges_count, opt.ninput_edges, 3):
+        index = edge_lengths.index(np.max(edge_lengths))
+        v1 = edges[index][0]
+        v2 = edges[index][1]
+        coor_v1 = mesh_data.vs[v1]
+        coor_v2 = mesh_data.vs[v2]
+        v3 = len(mesh_data.vs)
+        coor_mid = (coor_v1 + coor_v2) / 2.
+        mesh_data.vs=np.append(mesh_data.vs, coor_mid.reshape(1, 3), axis=0)
+        edge_lengths[index] = edge_lengths[index] / 2.
+        edge_lengths.append(edge_lengths[index])
+        edges[index][1] = v3
+        edges.append([v2, v3])
+        seg_labels = np.append(seg_labels, seg_labels[index])
+        sseg_labels = np.append(sseg_labels, sseg_labels[index].reshape(1, sseg_labels.shape[1]), axis=0)
+        for face_id, face in enumerate(faces):
+            for i in range(3):
+                if(face[i]==v2 and face[(i+1)%3]==v1 or face[i]==v2 and face[(i+2)%3]==v1):
+                    v0 = face[(i+2)%3] if face[(i+1)%3] == v1 else face[(i+1)%3]
+                    edges.append([v0, v3])
+                    i0 = edges.index([v0, v1]) if v0 < v1 else edges.index([v1, v0])
+                    i1 = edges.index([v0, v2]) if v0 < v2 else edges.index([v2, v0])
+                    label = vote(seg_labels[i0],seg_labels[i1],seg_labels[index])
+                    label_sseg = vote_sseg(sseg_labels[i0],sseg_labels[i1],sseg_labels[index])
+                    seg_labels = np.append(seg_labels, label)
+                    sseg_labels = np.append(sseg_labels, label_sseg.reshape(1, sseg_labels.shape[1]), axis=0)
+                    edge_lengths.append(np.linalg.norm(mesh_data.vs[v3] - mesh_data.vs[v0], ord=2))
+                    faces[face_id] = [v0, v2, v3]
+                    faces = np.append(faces, np.array([v0, v1, v3]).reshape(1, 3), axis=0)
+                    face_areas[face_id] = face_areas[face_id]/2
+                    face_areas = np.append(face_areas, face_areas[face_id])
+    """
+    print(mesh_data.filename)
+    print(len(edge_lengths))
+    print(len(faces))
+    print(mesh_data.filename)
+    print(seg_labels.shape)
+    print(sseg_labels.shape)
+    """
+
+    write_seg(seg_labels, seg_file);
+    write_sseg(sseg_labels, sseg_file);
+    return faces, face_areas
+
+def read_seg(seg):
+    seg_labels = np.loadtxt(open(seg, 'r'), dtype='float64')
+    return seg_labels
+
+
+def read_sseg(sseg_file):
+    sseg_labels = read_seg(sseg_file)
+    sseg_labels = np.array(sseg_labels > 0, dtype=np.int32)
+    return sseg_labels
+
+
+def write_seg(labels, seg):
+    dir_name = os.path.join(os.path.dirname(seg), 'cache')
+    prefix = os.path.basename(seg)
+    write_file = os.path.join(dir_name, prefix)
+    if not os.path.isdir(dir_name):
+        os.mkdir(dir_name)
+    np.savetxt(write_file, labels, delimiter='\n', fmt='%.1e')
+
+
+
+def write_sseg(labels, sseg_file):
+    sum = np.sum(labels, axis=1).reshape(labels.shape[0], 1).repeat(labels.shape[1], axis= 1)*2
+    dir_name = os.path.join(os.path.dirname(sseg_file), 'cache')
+    prefix = os.path.basename(sseg_file)
+    write_file = os.path.join(dir_name, prefix)
+    if not os.path.isdir(dir_name):
+        os.mkdir(dir_name)
+    np.savetxt(write_file, labels/sum, delimiter=' ', newline='\n', fmt='%.2e')
+
+
+def vote(label0, label1, label2):
+    if label0 == label1:
+        return label1
+    if label1 == label2:
+        return label1
+    if label0 == label2:
+        return label2
+    return label2
+
+def vote_sseg(label0, label1, label2):
+    if np.array_equal(label0, label1):
+        return label1
+    if np.array_equal(label1, label2):
+        return label1
+    if np.array_equal(label2, label0):
+        return label2
+    return label2
 
 def fill_from_file(mesh, file):
     mesh.filename = ntpath.split(file)[1]
