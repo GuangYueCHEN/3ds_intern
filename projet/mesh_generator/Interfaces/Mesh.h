@@ -28,13 +28,11 @@ public:
 	
 	void augmentation(const size_t & n_triangle);
 
-	void add_triangle(const Triangle & t)
-	  {
-		m_triangles.push_back(t);
-	  }
+	void add_triangle(const Triangle & t);
 
 private:
 	static size_t point_reduce(const  std::vector <Point3D> & pts);
 	static double SignedVolumeOfTriangle(const Triangle & tri);
-	std::vector<Triangle> m_triangles;
+	std::vector<Point3D> m_points;
+	std::vector<std::vector<size_t>> m_triangles;
 };

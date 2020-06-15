@@ -7,13 +7,59 @@
 
 #include <map>
 
-Mesh::Mesh(const std::vector<Triangle> & iTriangles) : m_triangles(iTriangles) {};
+bool operator == (const Point3D & iP1, const Point3D & iP2)
+{
+	if (iP1.get_x() != iP2.get_x())
+		return false;
+
+	if (iP1.get_y() != iP2.get_y())
+		return false;
+
+	return iP1.get_z() == iP2.get_z();
+}
+
+
+Mesh::Mesh(const std::vector<Triangle> & iTriangles)
+{	
+	m_points.reserve(3 * iTriangles.size());
+	m_triangles.reserve(iTriangles.size());
+	for (const Triangle & tri : iTriangles)
+	{
+		std::vector<size_t> triangle;
+		triangle.reserve(3);
+		for (size_t i = 0; i < 3; i++)
+		{
+			Point3D point = tri.get_point(i);
+			bool sign = false;
+			for(size_t j=0; j < m_points.size(); j++)
+			{
+				if (point == m_points.at(j))
+				{
+					triangle.push_back(j);
+					sign = true;
+				}
+			}
+			if(sign == false)
+			{
+				m_points.push_back(point);
+				triangle.push_back(m_points.size()-1);
+			}
+		}
+		m_triangles.push_back(triangle);
+	}
+}
 
 
 Triangle Mesh::get_triangle(const size_t & index) const 
 {
 	assert(index < m_triangles.size());
-	return m_triangles[index];
+	std::vector<Point3D> pts;
+	pts.reserve(3);
+	for (size_t i = 0; i < 3; i++)
+	{
+		pts.push_back(m_points[m_triangles[index][i]]);
+	}
+	return Triangle(pts);
 }
 
 size_t Mesh::nb_triangles() const
@@ -61,7 +107,7 @@ bool Mesh::is_closed() const
 		{
 			for (size_t i = 0; i < 3; i++)
 			{
-				Point3D pt = t.get_point(i);
+				Point3D pt = m_points[ t[i]];
 				pts.push_back(pt);
 			}
 		}
@@ -95,7 +141,7 @@ bool Mesh::is_closed_2() const
   {
     for (int k = 0; k < 3; k++)
     {
-      std::array<Point3D, 2> E{ t.get_point(k), t.get_point((k + 1) % 3) };
+      std::array<Point3D, 2> E{ m_points[ t[k]], m_points[t[(k + 1) % 3]] };
       if (E[1] < E[0])
         std::swap(E[0], E[1]);
       auto It = EdgeMultiplicities.insert(std::make_pair(E, 0));
@@ -125,21 +171,27 @@ double Mesh::volume() const
 	double sum = 0.;
 	for (const auto & tri : m_triangles) 
 	{
-		sum += SignedVolumeOfTriangle(tri);
+		std::vector<Point3D> pts;
+		pts.reserve(3);
+		pts.push_back(m_points[tri[0]]);
+		pts.push_back(m_points[tri[1]]);
+		pts.push_back(m_points[tri[2]]);
+		Triangle triangle(pts);
+		sum += SignedVolumeOfTriangle(triangle);
 	}
 	return std::abs(sum);
 }
 
 Point3D Mesh::near_with(const Point3D & pt) const
 {
-	Point3D near = m_triangles[0].get_point(0);
+	Point3D near = m_points[m_triangles[0][0]];
 	for (const auto & tri : m_triangles)
 	{
 		for (size_t i = 0; i < 3; i++)
 		{
-			if (pt.distance_with(near) < pt.distance_with(tri.get_point(i)))
+			if (pt.distance_with(near) < pt.distance_with(m_points[tri[i]]))
 			{
-				near = tri.get_point(i);
+				near = m_points[tri[i]];
 			}
 		}
 	}
@@ -157,13 +209,13 @@ Mesh Mesh::remeshing(const Point3D & near, const Point3D & pt) const
 		pts.reserve(3);
 		for (size_t i = 0; i < 3; i++)
 		{
-			if (near.distance_with(tri.get_point(i)) < Tolerance)
+			if (near.distance_with(m_points[tri[i]]) < Tolerance)
 			{
 				pts.push_back(pt);
 			}
 			else
 			{
-				pts.push_back(tri.get_point(i));
+				pts.push_back(m_points[tri[i]]);
 			}
 		}
 		new_triangles.push_back(Triangle(pts));
@@ -176,7 +228,13 @@ int Mesh::point_position(const Point3D & pt) const
 {
 	for (const auto & tri : m_triangles) 
 	{
-		if (tri.plan_support(pt))
+		std::vector<Point3D> pts;
+		pts.reserve(3);
+		pts.push_back(m_points[tri[0]]);
+		pts.push_back(m_points[tri[1]]);
+		pts.push_back(m_points[tri[2]]);
+		Triangle triangle(pts);
+		if (triangle.plan_support(pt))
 		{
 			return 0;
 		}
@@ -242,12 +300,18 @@ void Mesh::augmentation(const size_t & n_triangles)
 
 void Mesh::augmentation(const size_t & n_triangles)
 {
+	std::vector<Point3D> points;
+	points.reserve(m_points.size() + (n_triangles - nb_triangles()) % 2);
 	assert((n_triangles - nb_triangles()) % 2 == 0);
-	std::vector<Triangle> tris;
+	std::vector<std::vector<size_t>> tris;
 	tris.reserve(n_triangles);
-	std::vector<Triangle> tris2;
+	std::vector<std::vector<size_t>> tris2;
 	tris2.reserve(n_triangles);
-	for (Triangle & triangle : m_triangles)
+	for (const auto & p : m_points) 
+	{
+		points.push_back(p);
+	}
+	for (const auto & triangle : m_triangles)
 	{
 		tris.push_back(triangle);
 	}
@@ -258,7 +322,13 @@ void Mesh::augmentation(const size_t & n_triangles)
 		size_t index_max = 0;
 		for (size_t i = 0; i < size; i++)
 		{
-			double area = tris[i].area();
+			std::vector<Point3D> pts;
+			pts.reserve(3);
+			pts.push_back(m_points[tris[i][0]]);
+			pts.push_back(m_points[tris[i][1]]);
+			pts.push_back(m_points[tris[i][2]]);
+			Triangle triangle(pts);
+			double area = triangle.area();
 			if (area > max)
 			{
 				max = area;
@@ -270,11 +340,18 @@ void Mesh::augmentation(const size_t & n_triangles)
 		{
 			if (i==index_max)
 			{
-				Triangle tri = tris[i];
+				std::vector<Point3D> pts;
+				pts.reserve(3);
+				pts.push_back(m_points[tris[i][0]]);
+				pts.push_back(m_points[tris[i][1]]);
+				pts.push_back(m_points[tris[i][2]]);
+				Triangle tri(pts);
 				Point3D center = tri.center();
-				tris2.push_back(Triangle({ center, tri.get_point(0), tri.get_point(1) }));
-				tris2.push_back(Triangle({ center, tri.get_point(0), tri.get_point(2) }));
-				tris2.push_back(Triangle({ center, tri.get_point(1), tri.get_point(2) }));
+				points.push_back(center);
+				size_t index_center = points.size() - 1;
+				tris2.push_back(std::vector<size_t>({ index_center, tris[i][0], tris[i][1] }));
+				tris2.push_back(std::vector<size_t>({ index_center, tris[i][1], tris[i][2] }));
+				tris2.push_back(std::vector<size_t>({ index_center, tris[i][0], tris[i][2] }));
 			}
 			else
 			{
@@ -283,8 +360,10 @@ void Mesh::augmentation(const size_t & n_triangles)
 		}
 		size += 2;
 		tris = tris2;
+		m_points = points;
 		tris2.clear();
 	}
 
 	m_triangles = tris;
+	
 }
