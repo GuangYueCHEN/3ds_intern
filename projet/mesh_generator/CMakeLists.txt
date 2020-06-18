@@ -58,3 +58,9 @@ add_test(test_loader ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} test_loader)
 add_test(test_write ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} test_write)
 add_test(mesh_test_augmentation ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_test_augmentation)
 
+add_test(mesh_add_point ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_add_point)
+add_test(mesh_add_triangle ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_add_triangle)
+add_test(mesh_get_triangles ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_get_triangles)
+add_test(mesh_split_collapse ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_split_collapse)
+add_test(mesh_flip_edge ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_flip_edge)
+
