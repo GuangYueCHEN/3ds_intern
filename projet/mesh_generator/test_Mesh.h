@@ -95,9 +95,7 @@ TEST_CASE("mesh_get_triangles")
 	res = mesh.GetTrianglesAroundEdge(0, 1);
 	REQUIRE(res.size() == 2);
 	REQUIRE(res == std::vector<size_t>({0,2 }));
-	res = mesh.GetTrianglesAroundTriangles({ 0,1,2 });
-	REQUIRE(res.size() == 3);
-	REQUIRE(res == std::vector<size_t>({ 1,2,3 }));
+
 }
 
 

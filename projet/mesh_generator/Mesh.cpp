@@ -183,18 +183,12 @@ double Mesh::volume() const
 
 Point3D Mesh::near_with(const Point3D & pt) const
 {
-	Point3D near = m_points[m_triangles[0][0]];
-	for (const auto & tri : m_triangles)
-	{
-		for (size_t i = 0; i < 3; i++)
-		{
-			if (pt.distance_with(near) < pt.distance_with(m_points[tri[i]]))
-			{
-				near = m_points[tri[i]];
-			}
-		}
-	}
-	return near;
+  
+  return *std::min_element(m_points.begin(), m_points.end(), [&](const Point3D & iP1, const Point3D & iP2)
+  {
+    return pt.distance_with(iP1) < pt.distance_with(iP2);
+  });
+  
 }
 
 Mesh Mesh::remeshing(const Point3D & near, const Point3D & pt) const
@@ -223,6 +217,8 @@ Mesh Mesh::remeshing(const Point3D & near, const Point3D & pt) const
 	return Mesh(new_triangles);
 }
 
+// c'est pas la facon la plus simple
+
 int Mesh::point_position(const Point3D & pt) const
 {
 	for (const auto & tri : m_triangles) 
@@ -235,10 +231,11 @@ int Mesh::point_position(const Point3D & pt) const
 		Triangle triangle(pts);
 		if (triangle.plan_support(pt))
 		{
-			return 0;
+			return 0; // c'est faux
 		}
 	}
 	
+  // ca marche pour n'importe quel point
 	Point3D near = near_with(pt);
 
 	Mesh new_mesh = remeshing(near, pt);
@@ -379,25 +376,29 @@ void Mesh::augmentation(const size_t & n_triangles)
 
 
 
-
-size_t Mesh::add_point(const Point3D & p)
+// tester si le point existe deja devrait etre optionnel, car ca peut etre couteux en temps
+size_t Mesh::add_point(const Point3D & p, bool SearchForPoint)
 {
 	size_t index = 0;
-	for (const auto & pt : m_points)
-	{
-		if (p == pt)
-		{
-			return index;
-		}
-		index++;
-	}
+  if (SearchForPoint)
+  {
+    for (const auto & pt : m_points)
+    {
+      if (p == pt)
+      {
+        return index;
+      }
+      index++;
+    }
+  }
+	
 	m_points.push_back(p);
 	return m_points.size() - 1;
 }
 
 bool triangle_equal(const std::array<size_t, 3> & tri, const std::array<size_t, 3> & indices)
 {
-	if (tri == indices) return true;
+	/*if (tri == indices) return true;
 	std::array<size_t, 3>  indices1 = { indices[0], indices[2], indices[1]};
 	if (tri == indices1) return true;
 	indices1 = { indices[1], indices[0], indices[1] };
@@ -408,40 +409,52 @@ bool triangle_equal(const std::array<size_t, 3> & tri, const std::array<size_t, 
 	if (tri == indices1) return true;
 	indices1 = { indices[2], indices[1], indices[0] };
 	if (tri == indices1) return true;
-	return false;
+	return false;*/
+  auto s1 = tri;
+  auto s2 = indices;
+  std::sort(s1.begin(), s1.end());
+  std::sort(s2.begin(), s2.end());
+  return s1 == s2;
 }
 
-size_t Mesh::add_triangle(const std::array<size_t, 3> & indices)
+size_t Mesh::add_triangle(const std::array<size_t, 3> & indices, bool SearchForPoint )
 {
 	assert(indices[0] < m_points.size());
 	assert(indices[1] < m_points.size());
 	assert(indices[2] < m_points.size());
 	size_t index = 0;
-	for (const auto & tri : m_triangles)
-	{
-		if (triangle_equal(tri, indices))
-		{
-			return index;
-		}
-		index++;
-	}
+
+  if (SearchForPoint)
+  {
+    for ( size_t tri = 0; tri < m_triangles.size(); tri++)
+    {
+      if (triangle_equal(m_triangles[tri], indices))
+      {
+        return tri;
+      }
+    }
+  }
+	
 	m_triangles.push_back(indices);
-	return index;
+	return m_triangles.size() - 1;
 }
 
 void Mesh::remove_triangle(size_t iNumTriangle)
 {
 	assert(iNumTriangle < m_triangles.size());
-	for (size_t i = iNumTriangle; i < m_triangles.size()-1; i++)
+  m_triangles.erase(m_triangles.begin() + iNumTriangle);
+	/*for (size_t i = iNumTriangle; i < m_triangles.size()-1; i++)
 	{
 		m_triangles[i] = m_triangles[i + 1];
 	}
-	m_triangles.pop_back();
+	m_triangles.pop_back();*/
 }
 void Mesh::remove_vertex(size_t iNumVertex)
 {
 	assert(iNumVertex < m_points.size());
-	for (size_t i = 0; i < m_triangles.size() ; i++)
+  
+  // pourquoi dans cet ordre ? :)
+	for (size_t i = m_triangles.size() - 1; i >= m_triangles.size() ; i--)
 	{
 		if (m_triangles[i][0] == iNumVertex || m_triangles[i][1] == iNumVertex || m_triangles[i][2] == iNumVertex)
 		{
@@ -449,7 +462,10 @@ void Mesh::remove_vertex(size_t iNumVertex)
 			i--;
 		}
 	}
-	m_points[iNumVertex] = m_points[m_points.size() - 1];
+
+  m_points.erase(m_points.begin() + iNumVertex);
+
+	/*m_points[iNumVertex] = m_points[m_points.size() - 1];
 	m_points.pop_back();
 
 	for (size_t i = 0; i < m_triangles.size(); i++)
@@ -466,10 +482,10 @@ void Mesh::remove_vertex(size_t iNumVertex)
 		{
 			m_triangles[i][2] = iNumVertex;
 		}
-	}
+	}*/
 }
 
-std::vector<size_t> Mesh::GetTrianglesAroundVertex(size_t iNumVertex) //renvoie la liste des triangles qui contiennent un vertex
+std::vector<size_t> Mesh::GetTrianglesAroundVertex(size_t iNumVertex) const //renvoie la liste des triangles qui contiennent un vertex
 {
 	std::vector<size_t> res;
 	for (size_t i = 0; i < m_triangles.size(); i++)
@@ -481,85 +497,39 @@ std::vector<size_t> Mesh::GetTrianglesAroundVertex(size_t iNumVertex) //renvoie 
 	}
 	return res;
 }
-std::vector<size_t> Mesh::GetTrianglesAroundTriangles(const std::array<size_t, 3> & indices)
+std::vector<size_t> Mesh::GetTrianglesAroundTriangles(size_t itr) const
 {
-	std::vector<size_t> res1 = GetTrianglesAroundEdge(indices[0], indices[1]);
-	std::vector<size_t> res2 = GetTrianglesAroundEdge(indices[0], indices[2]);
-	std::vector<size_t> res3 = GetTrianglesAroundEdge(indices[1], indices[2]);
-	std::vector<size_t> res;
-	res.reserve(3);
-	if (res3[0] == res2[0]) res.push_back(res3[1]);
-	else if (res3[0] == res2[1]) res.push_back(res3[1]);
-	else if (res3[1] == res2[0]) res.push_back(res3[0]);
-	else if (res3[1] == res2[1]) res.push_back(res3[0]);
+  std::vector<size_t> Result; Result.reserve(3);
 
-	if (res1[0] == res2[0])
-	{
-		res.push_back(res1[1]);
-		res.push_back(res2[1]);
-	}
-	else if (res1[0] == res2[1])
-	{
-		res.push_back(res1[1]);
-		res.push_back(res2[0]);
-	}
-	else if (res1[1] == res2[0])
-	{
-		res.push_back(res1[0]);
-		res.push_back(res2[1]);
-	}
-	else if (res1[1] == res2[1])
-	{
-		res.push_back(res1[0]);
-		res.push_back(res2[0]);
-	}
-
-	return res;
-
+  std::array<size_t, 3> trVertices(m_triangles[itr]);
+  std::sort(trVertices.begin(), trVertices.end());
+  for (size_t t = 0; t < m_triangles.size(); t++)
+  {
+    if (itr == t) continue;
+    std::array<size_t, 3> currentTr(m_triangles[t]);
+    std::sort(currentTr.begin(), currentTr.end());
+    std::vector<size_t> intersection; intersection.reserve(2);
+    std::set_intersection(trVertices.begin(), trVertices.end(), currentTr.begin(), currentTr.end(), intersection.end());
+    if (intersection.size() == 2)
+      Result.push_back(t);
+  }
+  return Result;
 }
-std::vector<size_t> Mesh::GetTrianglesAroundTriangles(const Triangle & t)
-{
-	std::array<size_t, 3> indices;
-	for (size_t i = 0; i < 3; i++)
-	{
-		Point3D x = t.get_point(i);
-		for (size_t j = 0; j < m_points.size(); j++)
-		{
-			if (m_points[j] == x) 
-			{
-				indices[i] = j;
-			}
-		}
-	}
-	return GetTrianglesAroundTriangles(indices);
 
-}
-std::vector<size_t> Mesh::GetTrianglesAroundEdge(size_t Vertex1, size_t Vertex2) //renvoie la liste des triangles qui partagent une edge donnée (sans ordre) par 2 vertices
+std::vector<size_t> Mesh::GetTrianglesAroundEdge(size_t Vertex1, size_t Vertex2) const //renvoie la liste des triangles qui partagent une edge donnée (sans ordre) par 2 vertices
 {
-	std::vector<size_t> res1 = GetTrianglesAroundVertex(Vertex1);
-	std::vector<size_t> res2 = GetTrianglesAroundVertex(Vertex2);
-	std::vector<size_t> res;
-	res.reserve(2);
-	for (std::vector<size_t>::iterator it = res1.begin(); it < res1.end(); it++)
-	{
-		for (std::vector<size_t>::iterator is = res2.begin(); is < res2.end(); is++)
-		{
-			if (*it == *is)
-			{
-				res.push_back(*it);
-				break;
-			}
-		}
-	}
-	return res;
+  auto R1 = GetTrianglesAroundVertex(Vertex1), R2 = GetTrianglesAroundVertex(Vertex2);
+  std::vector<size_t> Result;
+  std::set_intersection(R1.begin(), R1.end(), R2.begin(), R2.end(), Result.end());
+  return Result;
 }
 
 void Mesh::flip_edge(size_t Vertex1, size_t Vertex2)
 {
 	std::vector<size_t> res = GetTrianglesAroundEdge(Vertex1,Vertex2);
 	assert(res.size() == 2);
-	std::array<size_t, 3> tri1 = m_triangles[res[0]];
-	std::array<size_t, 3> tri2 = m_triangles[res[1]];
+	const std::array<size_t, 3> &tri1 = m_triangles[res[0]];
+	const std::array<size_t, 3> &tri2 = m_triangles[res[1]];
 	size_t vertex3, vertex4;
 	for(const size_t & vertex : tri1)
 	{
@@ -575,8 +545,8 @@ void Mesh::flip_edge(size_t Vertex1, size_t Vertex2)
 			vertex4 = vertex;
 		}
 	}
-	std::vector<size_t> res1 = GetTrianglesAroundEdge(vertex3, vertex4);
-	assert(res1.size() == 0);
+	/*std::vector<size_t> res1 = GetTrianglesAroundEdge(vertex3, vertex4);
+	assert(res1.size() == 0);*/
 	m_triangles[res[0]] = std::array<size_t, 3>({Vertex1, vertex3, vertex4  });
 	m_triangles[res[1]] = std::array<size_t, 3>({Vertex2, vertex4, vertex3  });
 }
@@ -585,26 +555,27 @@ void Mesh::SplitEdge(size_t Vertex1, size_t Vertex2, const Point3D & p) //coupe 
 {
 	size_t index = add_point(p);
 	std::vector<size_t> res = GetTrianglesAroundEdge(Vertex1, Vertex2);
-	assert(res.size() == 2);
-	size_t vertex3, vertex4;
-	for (const size_t & vertex : m_triangles[res[0]])
-	{
-		if (vertex != Vertex1 && vertex != Vertex2)
-		{
-			vertex3 = vertex;
-		}
-	}
-	for (const size_t & vertex : m_triangles[res[1]])
-	{
-		if (vertex != Vertex1 && vertex != Vertex2)
-		{
-			vertex4 = vertex;
-		}
-	}
-	m_triangles[res[0]] = std::array<size_t, 3>{Vertex1, vertex3, index  };
-	m_triangles[res[1]] = std::array<size_t, 3>{Vertex2, index, vertex3  };
-	add_triangle(std::array<size_t, 3>{Vertex1, index, vertex4  });
-	add_triangle(std::array<size_t, 3>{Vertex2, index, vertex4  });
+	assert(res.size() == 2); // pourquoi ? on peut splitter une edge sur le bord
+	
+  std::vector<size_t> OtherPoints;
+  for (const auto & t : res)
+  {
+    for (const size_t & vertex : m_triangles[t])
+    {
+      if (vertex != Vertex1 && vertex != Vertex2)
+      {
+        OtherPoints.push_back(vertex);
+      }
+    }
+  }
+  
+  assert(OtherPoints.size() == res.size());
+  for (size_t k=0; OtherPoints.size(); k++)
+  {
+    m_triangles[res[k]] = std::array<size_t, 3>{Vertex1, OtherPoints[k], index  };
+    add_triangle(std::array<size_t, 3>{Vertex2, index, OtherPoints[k]  });
+  }
+	
 }
 void Mesh::CollapseEdge(size_t Vertex1, size_t Vertex2)
 {
@@ -613,31 +584,16 @@ void Mesh::CollapseEdge(size_t Vertex1, size_t Vertex2)
 	double x = (m_points[Vertex1].get_x() + m_points[Vertex2].get_x()) / 2.;
 	double y = (m_points[Vertex1].get_y() + m_points[Vertex2].get_y()) / 2.;
 	double z = (m_points[Vertex1].get_z() + m_points[Vertex2].get_z()) / 2.;
-	if (res[0] > res[1])
-	{
-		remove_triangle(res[0]);
-		remove_triangle(res[1]);
-	}
-	else
-	{
-		remove_triangle(res[1]);
-		remove_triangle(res[0]);
-	}
+	
+  remove_triangle(res[0]);
+  remove_triangle(res[1]);
+
 	m_points[Vertex1] = Point3D({ x,y,z });
 	for (size_t i =0; i<m_triangles.size();i++)
 	{
-		if (m_triangles[i][0] == Vertex2)
-		{
-			m_triangles[i][0] = Vertex1;
-		}
-		else if (m_triangles[i][1] == Vertex2)
-		{
-			m_triangles[i][1] = Vertex1;
-		}
-		else if (m_triangles[i][2] == Vertex2)
-		{
-			m_triangles[i][2] = Vertex1;
-		}
+    for(size_t k=0; k<3; k++)
+      if (m_triangles[i][k] == Vertex2)
+        m_triangles[i][k] = Vertex1;
 	}
 	remove_vertex(Vertex2);
 }
