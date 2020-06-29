@@ -155,12 +155,12 @@ def split_edge(mesh_data, faces, face_areas, opt):
     print(seg_labels.shape)
     print(sseg_labels.shape)
     """
-    write_obj(mesh_data.vs, faces, obj_file);
+    write_obj(mesh_data.vs, faces, obj_file, edges, seg_labels);
     write_seg(seg_labels, seg_file);
     write_sseg(sseg_labels, sseg_file);
     return faces, face_areas
 
-def write_obj(vs, faces, obj_file):
+def write_obj(vs, faces, obj_file, edges, seg_labels):
     if not os.path.isdir( os.path.dirname(obj_file)):
         os.mkdir(os.path.dirname(obj_file))
     with open(obj_file, "w") as f:
@@ -169,6 +169,8 @@ def write_obj(vs, faces, obj_file):
             f.write("v " + str(v[0]) + " " + str(v[1]) + " " + str(v[2]) + "\n")
         for face in faces:
             f.write("f " + str(face[0]+1) + " " + str(face[1]+1) + " " + str(face[2]+1) + "\n")
+        for i in range(0,len(edges)):
+            f.write("e " + str(edges[i][0] + 1) + " " + str(edges[i][1] + 1) + " " + str(int(seg_labels[i])) + "\n")
     return
 
 def read_seg(seg):

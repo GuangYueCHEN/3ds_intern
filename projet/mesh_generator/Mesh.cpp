@@ -231,7 +231,7 @@ int Mesh::point_position(const Point3D & pt) const
 		Triangle triangle(pts);
 		if (triangle.plan_support(pt))
 		{
-			return 0; // c'est faux
+			return 0; // s'il n'est pas dans le triangle, retourne 0
 		}
 	}
 	
@@ -555,7 +555,7 @@ void Mesh::SplitEdge(size_t Vertex1, size_t Vertex2, const Point3D & p) //coupe 
 {
 	size_t index = add_point(p);
 	std::vector<size_t> res = GetTrianglesAroundEdge(Vertex1, Vertex2);
-	assert(res.size() == 2); // pourquoi ? on peut splitter une edge sur le bord
+	//assert(res.size() == 2); // pourquoi ? on peut splitter une edge sur le bord
 	
   std::vector<size_t> OtherPoints;
   for (const auto & t : res)

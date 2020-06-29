@@ -47,28 +47,51 @@ class MeshPool(nn.Module):
         mask = np.ones(mesh.edges_count, dtype=np.bool)
         edge_groups = MeshUnion(mesh.edges_count, self.__fe.device)
         while mesh.edges_count > self.__out_target:
+            #print(mesh.edges_count)
             value, edge_id = heappop(queue)
             edge_id = int(edge_id)
             if mask[edge_id]:
                 self.__pool_edge(mesh, edge_id, mask, edge_groups)
+            #else:
+             #   print("mask false")
         mesh.clean(mask, edge_groups)
         fe = edge_groups.rebuild_features(self.__fe[mesh_index], mask, self.__out_target)
         self.__updated_fe[mesh_index] = fe
 
     def __pool_edge(self, mesh, edge_id, mask, edge_groups):
         if self.has_boundaries(mesh, edge_id):
+            print("pool edge has boundary")
             return False
         elif self.__clean_side(mesh, edge_id, mask, edge_groups, 0)\
             and self.__clean_side(mesh, edge_id, mask, edge_groups, 2) \
-            and self.__is_one_ring_valid(mesh, edge_id):
+            and self.__is_one_ring_valid(mesh, edge_id, mask):
             self.__merge_edges[0] = self.__pool_side(mesh, edge_id, mask, edge_groups, 0)
             self.__merge_edges[1] = self.__pool_side(mesh, edge_id, mask, edge_groups, 2)
             mesh.merge_vertices(edge_id)
             mask[edge_id] = False
             MeshPool.__remove_group(mesh, edge_groups, edge_id)
             mesh.edges_count -= 1
+            '''if not self.__is_one_ring_valid(mesh, self.__merge_edges[0], mask):
+                if  MeshPool.__get_invalids(mesh, self.__merge_edges[0], edge_groups, 0) != []:
+                    print("!!!!" + str(edge_id))
+                    print("error  " + str(self.__merge_edges[0]) + "  " + str(self.__merge_edges[1]))
+
+                if MeshPool.__get_invalids(mesh, self.__merge_edges[0], edge_groups, 2) != []:
+                    print("!!!!" + str(edge_id))
+                    print("error  " + str(self.__merge_edges[0]) + "  " + str(self.__merge_edges[1]))
+
+            if not self.__is_one_ring_valid(mesh, self.__merge_edges[1], mask):
+                if MeshPool.__get_invalids(mesh, self.__merge_edges[1], edge_groups, 0) != []:
+                    print("!!!!" + str(edge_id))
+                    print("error2  " + str(self.__merge_edges[1]) + "  " + str(self.__merge_edges[0]))
+
+                if MeshPool.__get_invalids(mesh, self.__merge_edges[1], edge_groups, 2) != []:
+                    print("!!!!" + str(edge_id))
+                    print("error2  " + str(self.__merge_edges[1]) + "  " + str(self.__merge_edges[0]))
+'''
             return True
         else:
+            #print("pool else"+str(edge_id))
             return False
 
     def __clean_side(self, mesh, edge_id, mask, edge_groups, side):
@@ -77,9 +100,11 @@ class MeshPool(nn.Module):
         invalid_edges = MeshPool.__get_invalids(mesh, edge_id, edge_groups, side)
         while len(invalid_edges) != 0 and mesh.edges_count > self.__out_target:
             self.__remove_triplete(mesh, mask, edge_groups, invalid_edges)
+            #print("clean remove triplete")
             if mesh.edges_count <= self.__out_target:
                 return False
             if self.has_boundaries(mesh, edge_id):
+                print("clean edge has boundary")
                 return False
             invalid_edges = self.__get_invalids(mesh, edge_id, edge_groups, side)
         return True
@@ -93,10 +118,32 @@ class MeshPool(nn.Module):
 
 
     @staticmethod
-    def __is_one_ring_valid(mesh, edge_id):
-        v_a = set(mesh.edges[mesh.ve[mesh.edges[edge_id, 0]]].reshape(-1))
+    def __is_one_ring_valid(mesh, edge_id, mask):
+        e_a = mesh.ve[mesh.edges[edge_id, 0]]
+        e_b = mesh.ve[mesh.edges[edge_id, 1]]
+        for e in e_a:
+            if not mask[e]:
+                e_a.remove(e)
+        for e in e_b:
+            if not mask[e]:
+                e_b.remove(e)
+        v_a = set(mesh.edges[e_a].reshape(-1))
         v_b = set(mesh.edges[mesh.ve[mesh.edges[edge_id, 1]]].reshape(-1))
         shared = v_a & v_b - set(mesh.edges[edge_id])
+        """if len(shared) != 2:
+            print("one ring not valid" + str(len(shared)))
+            for v in shared:
+                e = set(mesh.ve[v]) & set(e_a)
+                e2 = set(mesh.ve[v]) & set(e_b)
+                print(e)
+                print(e2)
+            e_a = set(mesh.ve[mesh.edges[edge_id, 0]])
+            e_b = set(mesh.ve[mesh.edges[edge_id, 1]])
+            for i in shared:
+                e_i = set(mesh.ve[i])
+                print(e_a & e_i)
+                print(e_b & e_i)
+                print("the edges")"""
         return len(shared) == 2
 
     def __pool_side(self, mesh, edge_id, mask, edge_groups, side):
@@ -122,10 +169,13 @@ class MeshPool(nn.Module):
         else:
             assert (len(shared_items) == 2)
             middle_edge = other_keys_a[shared_items[0]]
+            #print("????" + str(edge_id))
             update_key_a = other_keys_a[1 - shared_items[0]]
             update_key_b = other_keys_b[1 - shared_items[1]]
             update_side_a = mesh.sides[key_a, other_side_a + 1 - shared_items[0]]
             update_side_b = mesh.sides[key_b, other_side_b + 1 - shared_items[1]]
+            #print("????" + str(update_side_a))
+            #print("????" + str(update_side_b))
             MeshPool.__redirect_edges(mesh, edge_id, side, update_key_a, update_side_a)
             MeshPool.__redirect_edges(mesh, edge_id, side + 1, update_key_b, update_side_b)
             MeshPool.__redirect_edges(mesh, update_key_a, MeshPool.__get_other_side(update_side_a), update_key_b, MeshPool.__get_other_side(update_side_b))
@@ -178,6 +228,7 @@ class MeshPool(nn.Module):
             MeshPool.__remove_group(mesh, edge_groups, edge_key)
         mesh.edges_count -= 3
         vertex = list(vertex)
+        #print(invalid_edges)
         assert(len(vertex) == 1)
         mesh.remove_vertex(vertex[0])
 
