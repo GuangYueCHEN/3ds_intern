@@ -9,6 +9,7 @@ public:
   /*Constructor*/
   Point3D();
   Point3D(double axis_x, double axis_y, double axis_z);
+  Point3D(std::array<double, 3> Coords);
   Point3D(const Point3D& point) = default;
   
   /*get values*/

@@ -10,6 +10,11 @@ Point3D::Point3D() : m_Coords{0.,0.,0.}
 	
 }
 
+Point3D::Point3D(std::array<double, 3> Coords)
+{
+	m_Coords = Coords;
+}
+
 Point3D::Point3D(double axis_x, double axis_y, double axis_z) : m_Coords{axis_x, axis_y, axis_z}
 {
 	

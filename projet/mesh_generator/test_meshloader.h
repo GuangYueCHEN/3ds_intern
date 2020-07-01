@@ -29,3 +29,13 @@ TEST_CASE("test_write")
 	REQUIRE(mesh2.is_closed_2());
 }
 
+TEST_CASE("test_mesh_smoothing")
+{
+
+	MeshLoader loader(OutputDirectory + Slash + "sphere.obj");
+	Mesh mesh = loader.load();
+	mesh.LaplacianSmoothing(10, 0.2);
+	REQUIRE(mesh.is_closed_2());
+	MeshWriter writer(OutputDirectory + Slash + "sphere_smooth.obj");
+	writer.write(mesh);
+}

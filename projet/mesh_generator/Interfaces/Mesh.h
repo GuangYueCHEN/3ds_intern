@@ -32,13 +32,15 @@ public:
 	void remove_triangle(size_t iNumTriangle);
 	void remove_vertex(size_t iNumVertex);
 	
-	std::vector<size_t> GetTrianglesAroundVertex(size_t vertix) const; //renvoie la liste des triangles qui contiennent un vertex
+	std::vector<size_t> GetVerticesAroundVertex(size_t iNumVertex) const;
+	std::vector<size_t> GetTrianglesAroundVertex(size_t iNumVertex) const; //renvoie la liste des triangles qui contiennent un vertex
 	std::vector<size_t> GetTrianglesAroundTriangles(size_t itr) const;
-	std::vector<size_t> GetTrianglesAroundEdge(size_t Vertex1, size_t Vertex2) const; //renvoie la liste des triangles qui partagent une edge donnée (sans ordre) par 2 vertices
+	std::vector<size_t> GetTrianglesAroundEdge(size_t iNumVertex1, size_t iNumVertex2) const; //renvoie la liste des triangles qui partagent une edge donnée (sans ordre) par 2 vertices
 	
     void flip_edge(size_t Vertex1, size_t Vertex2);
 	void SplitEdge(size_t Vertex1, size_t Vertex2, const Point3D & p); //coupe une edge en insérant un point 
 	void CollapseEdge(size_t Vertex1, size_t Vertex2);
+	void LaplacianSmoothing(size_t itr, double alpha);
 
 private:
 	static size_t point_reduce(const  std::vector <Point3D> & pts);

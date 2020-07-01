@@ -167,16 +167,17 @@ double Mesh::SignedVolumeOfTriangle(const Triangle & tri)
 double Mesh::volume() const
 {
 	assert(is_closed());
+	std::vector<Point3D> pts;
+	pts.reserve(3);
 	double sum = 0.;
 	for (const auto & tri : m_triangles) 
 	{
-		std::vector<Point3D> pts;
-		pts.reserve(3);
 		pts.push_back(m_points[tri[0]]);
 		pts.push_back(m_points[tri[1]]);
 		pts.push_back(m_points[tri[2]]);
 		Triangle triangle(pts);
 		sum += SignedVolumeOfTriangle(triangle);
+		pts.clear();
 	}
 	return std::abs(sum);
 }
@@ -195,14 +196,13 @@ Mesh Mesh::remeshing(const Point3D & near, const Point3D & pt) const
 {
 	std::vector<Triangle> new_triangles;
 	new_triangles.reserve(m_triangles.size());
-
+	std::vector<Point3D> pts;
+	pts.reserve(3);
 	for (const auto & tri : m_triangles)
 	{
-		std::vector<Point3D> pts;
-		pts.reserve(3);
 		for (size_t i = 0; i < 3; i++)
 		{
-			if (near.distance_with(m_points[tri[i]]) < Tolerance)
+			if (m_points[tri[i]]==near)
 			{
 				pts.push_back(pt);
 			}
@@ -212,6 +212,7 @@ Mesh Mesh::remeshing(const Point3D & near, const Point3D & pt) const
 			}
 		}
 		new_triangles.push_back(Triangle(pts));
+		pts.clear();
 	}
 
 	return Mesh(new_triangles);
@@ -237,7 +238,6 @@ int Mesh::point_position(const Point3D & pt) const
 	
   // ca marche pour n'importe quel point
 	Point3D near = near_with(pt);
-
 	Mesh new_mesh = remeshing(near, pt);
 
 	if (new_mesh.volume() >= volume())
@@ -454,12 +454,14 @@ void Mesh::remove_vertex(size_t iNumVertex)
 	assert(iNumVertex < m_points.size());
   
   // pourquoi dans cet ordre ? :)
-	for (size_t i = m_triangles.size() - 1; i >= m_triangles.size() ; i--)
+	for (int i = m_triangles.size() - 1; i >= 0 ; i--)
 	{
+
 		if (m_triangles[i][0] == iNumVertex || m_triangles[i][1] == iNumVertex || m_triangles[i][2] == iNumVertex)
 		{
+			
 			remove_triangle(i);
-			i--;
+			
 		}
 	}
 
@@ -483,6 +485,25 @@ void Mesh::remove_vertex(size_t iNumVertex)
 			m_triangles[i][2] = iNumVertex;
 		}
 	}*/
+}
+
+std::vector<size_t> Mesh::GetVerticesAroundVertex(size_t iNumVertex) const //renvoie la liste des triangles qui contiennent un vertex
+{
+	std::vector<size_t> res;
+	res.push_back(iNumVertex);
+	std::vector<size_t> triangles = GetTrianglesAroundVertex(iNumVertex);
+	for (const auto & tri : triangles)
+	{	
+		for(size_t i = 0 ; i < 3 ; i++)
+		{ 
+			if (!std::binary_search(res.begin(), res.end(), m_triangles[tri][i]))
+			{
+				res.push_back(m_triangles[tri][i]);
+			}
+		}
+	}
+	res.erase(res.begin());
+	return res;
 }
 
 std::vector<size_t> Mesh::GetTrianglesAroundVertex(size_t iNumVertex) const //renvoie la liste des triangles qui contiennent un vertex
@@ -518,9 +539,11 @@ std::vector<size_t> Mesh::GetTrianglesAroundTriangles(size_t itr) const
 
 std::vector<size_t> Mesh::GetTrianglesAroundEdge(size_t Vertex1, size_t Vertex2) const //renvoie la liste des triangles qui partagent une edge donnée (sans ordre) par 2 vertices
 {
+
   auto R1 = GetTrianglesAroundVertex(Vertex1), R2 = GetTrianglesAroundVertex(Vertex2);
   std::vector<size_t> Result;
-  std::set_intersection(R1.begin(), R1.end(), R2.begin(), R2.end(), Result.end());
+  std::set_intersection(R1.begin(), R1.end(), R2.begin(), R2.end(), std::back_inserter(Result));
+
   return Result;
 }
 
@@ -558,6 +581,7 @@ void Mesh::SplitEdge(size_t Vertex1, size_t Vertex2, const Point3D & p) //coupe 
 	//assert(res.size() == 2); // pourquoi ? on peut splitter une edge sur le bord
 	
   std::vector<size_t> OtherPoints;
+
   for (const auto & t : res)
   {
     for (const size_t & vertex : m_triangles[t])
@@ -568,14 +592,12 @@ void Mesh::SplitEdge(size_t Vertex1, size_t Vertex2, const Point3D & p) //coupe 
       }
     }
   }
-  
   assert(OtherPoints.size() == res.size());
-  for (size_t k=0; OtherPoints.size(); k++)
+  for (size_t k=0; k < OtherPoints.size(); k++)
   {
     m_triangles[res[k]] = std::array<size_t, 3>{Vertex1, OtherPoints[k], index  };
     add_triangle(std::array<size_t, 3>{Vertex2, index, OtherPoints[k]  });
-  }
-	
+  }	
 }
 void Mesh::CollapseEdge(size_t Vertex1, size_t Vertex2)
 {
@@ -584,16 +606,60 @@ void Mesh::CollapseEdge(size_t Vertex1, size_t Vertex2)
 	double x = (m_points[Vertex1].get_x() + m_points[Vertex2].get_x()) / 2.;
 	double y = (m_points[Vertex1].get_y() + m_points[Vertex2].get_y()) / 2.;
 	double z = (m_points[Vertex1].get_z() + m_points[Vertex2].get_z()) / 2.;
-	
-  remove_triangle(res[0]);
-  remove_triangle(res[1]);
+
+	if (res[0] > res[1])
+	{
+		remove_triangle(res[0]);
+		remove_triangle(res[1]);
+	}
+	else
+	{
+		remove_triangle(res[1]);
+		remove_triangle(res[0]);
+	}
 
 	m_points[Vertex1] = Point3D({ x,y,z });
-	for (size_t i =0; i<m_triangles.size();i++)
+	for (size_t i = 0; i < m_triangles.size(); i++)
 	{
-    for(size_t k=0; k<3; k++)
-      if (m_triangles[i][k] == Vertex2)
-        m_triangles[i][k] = Vertex1;
+		for (size_t k = 0; k < 3; k++)
+		{
+			if (m_triangles[i][k] == Vertex2)
+			{
+				m_triangles[i][k] = Vertex1;
+				break;
+			}
+		}
 	}
+
 	remove_vertex(Vertex2);
+}
+
+
+Point3D operator * (const double & alpha , const Point3D & pt)
+{
+	return Point3D(pt.get_x() * alpha, pt.get_y() * alpha, pt.get_z() * alpha);
+}
+
+
+void Mesh::LaplacianSmoothing(size_t itr, double alpha)
+{
+	for (size_t i = 0; i < itr; i++)
+	{
+		std::vector<Point3D> points = m_points;
+		for (size_t j = 0; j < m_points.size(); j++)
+		{
+			std::vector<size_t> triangles = GetTrianglesAroundVertex(j);
+			std::vector<size_t> vertices = GetVerticesAroundVertex(j);
+			std::array<double, 3> new_position = { 0., 0., 0. };
+			for (const size_t & vertex : vertices)
+			{
+				new_position[0] -= m_points[vertex].get_x() / vertices.size();
+				new_position[1] -= m_points[vertex].get_y() / vertices.size();
+				new_position[2] -= m_points[vertex].get_z() / vertices.size();
+			}
+			Point3D new_point(new_position);
+			points[j] = m_points[j] +  alpha * ( m_points[j] + new_point);
+		}
+		m_points = points;
+	}
 }

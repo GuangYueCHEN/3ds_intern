@@ -63,4 +63,5 @@ add_test(mesh_add_triangle ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_add_tr
 add_test(mesh_get_triangles ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_get_triangles)
 add_test(mesh_split_collapse ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_split_collapse)
 add_test(mesh_flip_edge ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} mesh_flip_edge)
+add_test(test_mesh_smoothing ${EXECUTABLE_OUTPUT_PATH}/${PROJECT_NAME} test_mesh_smoothing)
 

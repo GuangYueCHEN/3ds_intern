@@ -6,7 +6,7 @@ Mesh generate_mesh()
   Point3D a(1., 0., 0.);
   Point3D b(0., 1., 0.);
   Point3D c(0., 0., 1.);
-  Point3D d(0., 0., 0.);
+  Point3D d(-1., -1., -1.);
 
   std::vector<Point3D> pts;
   std::vector<Triangle> tris;

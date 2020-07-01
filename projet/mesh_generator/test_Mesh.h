@@ -24,15 +24,15 @@ TEST_CASE("mesh_test_volume")
 {
   Mesh mesh = generate_mesh();
 
-  REQUIRE(std::abs(mesh.volume() - 0.16666) < tol_for_volume_cmp);
+  REQUIRE(std::abs(mesh.volume() - 0.16666 - 0.1666733333) < tol_for_volume_cmp);
 }
 
 TEST_CASE("mesh_test_point_position")
 {
   Mesh mesh = generate_mesh();
-  Point3D d(0., 0., 0.);
-  Point3D in(0.1, 0.1, 0.1);
-  Point3D out(-1, -1, -1);
+  Point3D d(1., 0., 0.);
+  Point3D in(-0.05, -0.05, -0.05);
+  Point3D out(-2, -2, -2);
   REQUIRE(mesh.point_position(in) == 1);
   REQUIRE(mesh.point_position(out) == -1);
   REQUIRE(mesh.point_position(d) == 0);
@@ -55,8 +55,8 @@ TEST_CASE("mesh_test_augmentation")
 TEST_CASE("mesh_add_point")
 {
 	Mesh mesh = generate_mesh();
-	Point3D x({ 0.,0.,0. });
-	size_t res = mesh.add_point(x);
+	Point3D x({ -1.,-1.,-1. });
+	size_t res = mesh.add_point(x,true);
 	REQUIRE(res == 3);
 
 	Point3D y({ 0.,5.,0. });
@@ -88,14 +88,15 @@ TEST_CASE("mesh_add_triangle")
 TEST_CASE("mesh_get_triangles")
 {
 	Mesh mesh = generate_mesh();
-
 	std::vector<size_t> res = mesh.GetTrianglesAroundVertex(0);
 	REQUIRE(res.size() == 3);
 	REQUIRE(res == std::vector<size_t>({0,2,3}));
 	res = mesh.GetTrianglesAroundEdge(0, 1);
 	REQUIRE(res.size() == 2);
 	REQUIRE(res == std::vector<size_t>({0,2 }));
-
+	 res = mesh.GetVerticesAroundVertex(0);
+	std::sort(res.begin(), res.end());
+	REQUIRE(res == std::vector<size_t>({ 1,2,3 }));
 }
 
 
@@ -108,7 +109,6 @@ TEST_CASE("mesh_split_collapse")
 	mesh.CollapseEdge(0, 4);
 	REQUIRE(mesh.nb_triangles() == 4);
 	REQUIRE(mesh.is_closed_2());
-
 }
 
 TEST_CASE("mesh_flip_edge")
@@ -125,3 +125,4 @@ TEST_CASE("mesh_flip_edge")
 	res = mesh.GetTrianglesAroundEdge(0, 3);
 	REQUIRE(res.size() == 2);
 }
+
