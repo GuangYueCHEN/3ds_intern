@@ -10,7 +10,7 @@ def fill_mesh(mesh2fill, file: str, opt):
     else:
         mesh_data = from_scratch(file, opt)
         np.savez_compressed(load_path, gemm_edges=mesh_data.gemm_edges, gemm_faces =mesh_data.gemm_faces, vs=mesh_data.vs, edges=mesh_data.edges,faces = mesh_data.faces,
-                            edges_count=mesh_data.edges_count, ve=mesh_data.ve, v_mask=mesh_data.v_mask, faces_edges =mesh_data.faces_edges, edge_faces= mesh_data.edge_faces,
+                            edges_count=mesh_data.edges_count, faces_count=mesh_data.faces_count, ve=mesh_data.ve, vf=mesh_data.vf, v_mask=mesh_data.v_mask, faces_edges =mesh_data.faces_edges, edge_faces= mesh_data.edge_faces,
                             filename=mesh_data.filename,
                             edge_lengths=mesh_data.edge_lengths, edge_areas=mesh_data.edge_areas,
                             features=mesh_data.features)
@@ -21,7 +21,9 @@ def fill_mesh(mesh2fill, file: str, opt):
     mesh2fill.gemm_faces = mesh_data['gemm_faces']
 
     mesh2fill.edges_count = int(mesh_data['edges_count'])
+    mesh2fill.faces_count = int(mesh_data['faces_count'])
     mesh2fill.ve = mesh_data['ve']
+    mesh2fill.vf = mesh_data['vf']
     mesh2fill.v_mask = mesh_data['v_mask']
     mesh2fill.filename = str(mesh_data['filename'])
     mesh2fill.edge_lengths = mesh_data['edge_lengths']
@@ -51,7 +53,9 @@ def from_scratch(file, opt):
     mesh_data.gemm_faces = None
     mesh_data.gemm_edges = None
     mesh_data.edges_count = None
+    mesh_data.faces_count = None
     mesh_data.ve = None
+    mesh_data.vf = None
     mesh_data.v_mask = None
     mesh_data.faces = None
     mesh_data.filename = 'unknown'
@@ -264,7 +268,6 @@ def fill_from_file(mesh, file):
 
 
 def remove_non_manifolds(mesh, faces):
-    mesh.ve = [[] for _ in mesh.vs]
     edges_set = set()
     mask = np.ones(len(faces), dtype=bool)
     _, face_areas = compute_face_normals_and_areas(mesh, faces)
@@ -294,6 +297,7 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     gemm_faces: array (#F x 3) of the 3 one-ring neighbors for each face
     """
     mesh.ve = [[] for _ in mesh.vs]
+    mesh.vf = [[] for _ in mesh.vs]
     face_nb = []
     edge_nb = []
     edge2key = dict()
@@ -307,6 +311,7 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
         for i in range(3):
             cur_edge = (face[i], face[(i + 1) % 3])
             face_edges.append(cur_edge)
+            mesh.vf[face[i]].append(face_id)
         for idx, edge in enumerate(face_edges):
             edge = tuple(sorted(list(edge)))
             face_edges[idx] = edge
@@ -333,11 +338,11 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
             edge_nb[edge_key][nb_count[edge_key] + 1] = edge2key[face_edges[(idx + 2) % 3]]
             nb_count[edge_key] += 2
 
-
     mesh.edges = np.array(edges, dtype=np.int32)
     mesh.gemm_faces = np.array(face_nb, dtype=np.int64)
     mesh.gemm_edges = np.array(edge_nb, dtype=np.int64)
     mesh.edges_count = edges_count
+    mesh.faces_count = face_id+1
     mesh.edge_areas = np.array(mesh.edge_areas, dtype=np.float32) / np.sum(face_areas) #Done whats the difference between edge_areas and edge_lenghts?
     mesh.faces = np.array(faces, dtype=np.int32)
     mesh.edge_faces = np.array(edge_faces, dtype=np.int32)
@@ -501,12 +506,12 @@ def extract_features(mesh):
     set_edge_lengths(mesh)
     with np.errstate(divide='raise'):
         try:
-            for extractor in [symmetric_ratios, area_ratios, symmetric_opposite_angles, dihedral_angle]:
+            for extractor in [symmetric_ratios]:#, area_ratios, symmetric_opposite_angles, dihedral_angle]:
                 feature = extractor(mesh)
                 features.append(feature)
-            features_curvature = curvature(mesh)
-            for feature in features_curvature:
-                features.append(feature)
+            #features_curvature = curvature(mesh)
+            #for feature in features_curvature:
+             #   features.append(feature)
             return np.concatenate(features, axis=0)
         except Exception as e:
             print(e)
@@ -687,7 +692,7 @@ def get_curvature(mesh, index):
 
 def get_normals_by_edge(mesh, edge_ids):
     face_ids = mesh.edge_faces[edge_ids]
-    normals,_ = get_normals(mesh,0)
+    normals, _ = get_normals(mesh,0)
     return normals[face_ids[:,2]],normals[face_ids[:, 3]]
 
 def fixed_division(to_div, epsilon):
