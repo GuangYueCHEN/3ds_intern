@@ -10,7 +10,7 @@ from models.layers.mesh_prepare import fill_mesh
 class Mesh:
 
     def __init__(self, file=None, opt=None, hold_history=False, export_folder=''):
-        self.vs = self.v_mask = self.filename = self.features = self.edge_areas = None
+        self.vs = self.v_mask = self.filename = self.features = self.areas = None
         self.edges = self.faces = self.gemm_faces =None
         self.pool_count = 0
         fill_mesh(self, file, opt)
@@ -171,5 +171,5 @@ class Mesh:
         self.history_data['faces_count'].pop()
         self.faces_count = self.history_data['faces_count'][-1]
 
-    def get_edge_areas(self):
-        return self.edge_areas
+    def get_face_areas(self):
+        return self.areas

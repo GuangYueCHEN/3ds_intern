@@ -9,7 +9,7 @@ class MeshConv(nn.Module):
     mesh: list of mesh data-structure (len(mesh) == Batch)
     and applies convolution
     """
-    def __init__(self, in_channels, out_channels, k=2, bias=True):
+    def __init__(self, in_channels, out_channels, k=5, bias=True):
         super(MeshConv, self).__init__()
         self.conv = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=(1, k), bias=bias)
         self.k = k
@@ -64,8 +64,12 @@ class MeshConv(nn.Module):
         f = f.permute(0, 3, 1, 2)
 
         # apply the symmetric functions for an equivariant conv
+        x, _ = torch.sort(f[:, :, :, 1:4], 3)
         x_1 = f[:, :, :, 1] + f[:, :, :, 3] +f[:, :, :, 2]
-        f = torch.stack([f[:, :, :, 0], x_1], dim=3)
+        x_2 = x[:, :, :, 0]
+        x_3 = x[:, :, :, 1]
+        x_4 = x[:, :, :, 2]
+        f = torch.stack([f[:, :, :, 0], x_1, x_2, x_3, x_4], dim=3)
         return f
 
     def pad_gemm(self, m, xsz, device):

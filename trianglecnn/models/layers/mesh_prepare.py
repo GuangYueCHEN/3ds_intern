@@ -12,7 +12,7 @@ def fill_mesh(mesh2fill, file: str, opt):
         np.savez_compressed(load_path, gemm_edges=mesh_data.gemm_edges, gemm_faces =mesh_data.gemm_faces, vs=mesh_data.vs, edges=mesh_data.edges,faces = mesh_data.faces,
                             edges_count=mesh_data.edges_count, faces_count=mesh_data.faces_count, ve=mesh_data.ve, vf=mesh_data.vf, v_mask=mesh_data.v_mask, faces_edges =mesh_data.faces_edges, edge_faces= mesh_data.edge_faces,
                             filename=mesh_data.filename,
-                            edge_lengths=mesh_data.edge_lengths, edge_areas=mesh_data.edge_areas,
+                            edge_lengths=mesh_data.edge_lengths, areas=mesh_data.areas,
                             features=mesh_data.features)
     mesh2fill.vs = mesh_data['vs']
     mesh2fill.edges = mesh_data['edges']
@@ -29,7 +29,7 @@ def fill_mesh(mesh2fill, file: str, opt):
     mesh2fill.edge_lengths = mesh_data['edge_lengths']
     mesh2fill.faces_edges = mesh_data['faces_edges']
     mesh2fill.edge_faces = mesh_data['edge_faces']
-    mesh2fill.edge_areas = mesh_data['edge_areas']
+    mesh2fill.areas = mesh_data['areas']
     mesh2fill.features = mesh_data['features']
 
 def get_mesh_path(file: str, num_aug: int):
@@ -60,187 +60,23 @@ def from_scratch(file, opt):
     mesh_data.faces = None
     mesh_data.filename = 'unknown'
     mesh_data.edge_lengths = None
-    mesh_data.edge_areas = []
+    mesh_data.areas = None
     mesh_data.edge_faces = None
     mesh_data.faces_edges = None
-    mesh_data.face_areas = None
 
-    obj_file = os.path.join(opt.dataroot, 'splited/' + os.path.basename(file))
-    if opt.edge_split and os.path.isfile(obj_file):
-        mesh_data.vs, faces = fill_from_file(mesh_data, obj_file)
-        mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
-        faces, face_areas = remove_non_manifolds(mesh_data, faces)
-    else:
-        mesh_data.vs, faces = fill_from_file(mesh_data, file)
-        mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
-        faces, face_areas = remove_non_manifolds(mesh_data, faces)
-        if opt.edge_split:
-            faces, face_areas = split_edge(mesh_data, faces, face_areas, opt)
-            mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
+    mesh_data.vs, faces = fill_from_file(mesh_data, file)
+    mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
+    faces, areas = remove_non_manifolds(mesh_data, faces)
     """if opt.num_aug > 1:
         faces = augmentation(mesh_data, opt, faces)
     """
     _, edge_faces, edges_dict = get_edge_faces(faces)
-    mesh_data.face_areas = np.array(face_areas)
-    build_gemm(mesh_data, faces, face_areas,edge_faces)
+    build_gemm(mesh_data, faces, areas, edge_faces)
     """if opt.num_aug > 1:
         post_augmentation(mesh_data, opt)"""
     mesh_data.features = extract_features(mesh_data)
     return mesh_data
 
-def split_edge(mesh_data, faces, face_areas, opt):
-    edge2key = dict()
-    edges = []
-    edges_count = 0
-    for face_id, face in enumerate(faces):
-        face_edges = []
-        for i in range(3):
-            cur_edge = (face[i], face[(i + 1) % 3])
-            face_edges.append(cur_edge)
-        for idx, edge in enumerate(face_edges):
-            edge = tuple(sorted(list(edge)))
-            face_edges[idx] = edge
-            if edge not in edge2key:
-                edge2key[edge] = edges_count
-                edges.append(list(edge))
-                edges_count += 1
-    arr_edges = np.asarray(edges)
-    edge_lengths = np.linalg.norm(mesh_data.vs[arr_edges[:, 0]] - mesh_data.vs[arr_edges[:, 1]], ord=2, axis=1).tolist()
-    """
-    print(mesh_data.filename)
-    print(len(edge_lengths))
-    print(len(faces))
-    """
-    seg_file = os.path.join(opt.dataroot, 'seg/' + os.path.splitext(mesh_data.filename)[0] + '.eseg')
-    obj_file = os.path.join(opt.dataroot, 'splited/' + mesh_data.filename)
-    sseg_file = os.path.join(opt.dataroot, 'sseg/' + os.path.splitext(mesh_data.filename)[0] + '.seseg')
-    assert(os.path.isfile(seg_file))
-    seg_labels = read_seg(seg_file)
-    sseg_labels = read_sseg(sseg_file)
-    for i in np.arange(edges_count, opt.ninput_edges, 3):
-        index = edge_lengths.index(np.max(edge_lengths))
-        v1 = edges[index][0]
-        v2 = edges[index][1]
-        coor_v1 = mesh_data.vs[v1]
-        coor_v2 = mesh_data.vs[v2]
-        v3 = len(mesh_data.vs)
-        coor_mid = (coor_v1 + coor_v2) / 2.
-        mesh_data.vs=np.append(mesh_data.vs, coor_mid.reshape(1, 3), axis=0)
-        edge_lengths[index] = edge_lengths[index] / 2.
-        edge_lengths.append(edge_lengths[index])
-        edges[index][1] = v3
-        edges.append([v2, v3])
-        seg_labels = np.append(seg_labels, seg_labels[index])
-        sseg_labels = np.append(sseg_labels, sseg_labels[index].reshape(1, sseg_labels.shape[1]), axis=0)
-        for face_id, face in enumerate(faces):
-            for i in range(3):
-                if face[i]==v2 and face[(i+1)%3]==v1 :
-                    v0 = face[(i+2)%3]
-                    edges.append([v0, v3])
-                    i0 = edges.index([v0, v1]) if v0 < v1 else edges.index([v1, v0])
-                    i1 = edges.index([v0, v2]) if v0 < v2 else edges.index([v2, v0])
-                    label = vote(seg_labels[i0],seg_labels[i1],seg_labels[index])
-                    label_sseg = vote_sseg(sseg_labels[i0],sseg_labels[i1],sseg_labels[index])
-                    seg_labels = np.append(seg_labels, label)
-                    sseg_labels = np.append(sseg_labels, label_sseg.reshape(1, sseg_labels.shape[1]), axis=0)
-                    edge_lengths.append(np.linalg.norm(mesh_data.vs[v3] - mesh_data.vs[v0], ord=2))
-                    faces[face_id] = [v0, v2, v3]
-                    faces = np.append(faces, np.array([v3, v1, v0]).reshape(1, 3), axis=0)
-                    face_areas[face_id] = face_areas[face_id]/2
-                    face_areas = np.append(face_areas, face_areas[face_id])
-                elif face[i]==v2 and face[(i+2)%3]==v1:
-                    v0 = face[(i+1)%3]
-                    edges.append([v0, v3])
-                    i0 = edges.index([v0, v1]) if v0 < v1 else edges.index([v1, v0])
-                    i1 = edges.index([v0, v2]) if v0 < v2 else edges.index([v2, v0])
-                    label = vote(seg_labels[i0], seg_labels[i1], seg_labels[index])
-                    label_sseg = vote_sseg(sseg_labels[i0], sseg_labels[i1], sseg_labels[index])
-                    seg_labels = np.append(seg_labels, label)
-                    sseg_labels = np.append(sseg_labels, label_sseg.reshape(1, sseg_labels.shape[1]), axis=0)
-                    edge_lengths.append(np.linalg.norm(mesh_data.vs[v3] - mesh_data.vs[v0], ord=2))
-                    faces[face_id] = [v2, v0, v3]
-                    faces = np.append(faces, np.array([v0, v1, v3]).reshape(1, 3), axis=0)
-                    face_areas[face_id] = face_areas[face_id] / 2
-                    face_areas = np.append(face_areas, face_areas[face_id])
-
-    """
-    print(mesh_data.filename)
-    print(len(edge_lengths))
-    print(len(faces))
-    print(mesh_data.filename)
-    print(seg_labels.shape)
-    print(sseg_labels.shape)
-    """
-    write_obj(mesh_data.vs, faces, obj_file, edges, seg_labels);
-    write_seg(seg_labels, seg_file);
-    write_sseg(sseg_labels, sseg_file);
-    return faces, face_areas
-
-def write_obj(vs, faces, obj_file, edges, seg_labels):
-    if not os.path.isdir( os.path.dirname(obj_file)):
-        os.mkdir(os.path.dirname(obj_file))
-    with open(obj_file, "w") as f:
-        f.write("g defaul\n")
-        for v in vs :
-            f.write("v " + str(v[0]) + " " + str(v[1]) + " " + str(v[2]) + "\n")
-        for face in faces:
-            f.write("f " + str(face[0]+1) + " " + str(face[1]+1) + " " + str(face[2]+1) + "\n")
-        for i in range(0,len(edges)):
-            f.write("e " + str(edges[i][0] + 1) + " " + str(edges[i][1] + 1) + " " + str(int(seg_labels[i])) + "\n")
-    return
-
-def read_seg(seg):
-    seg_labels = np.loadtxt(open(seg, 'r'), dtype='float64')
-    return seg_labels
-
-
-def read_sseg(sseg_file):
-    sseg_labels = read_seg(sseg_file)
-    sseg_labels = np.array(sseg_labels > 0, dtype=np.int32)
-    return sseg_labels
-
-
-def write_seg(labels, seg):
-    dir_name = os.path.join(os.path.dirname(seg), 'cache')
-    prefix = os.path.basename(seg)
-    write_file = os.path.join(dir_name, prefix)
-    if not os.path.isdir(dir_name):
-        os.mkdir(dir_name)
-    if os.path.isfile(write_file):
-        return
-    np.savetxt(write_file, labels, delimiter='\n', fmt='%.1e')
-
-
-
-def write_sseg(labels, sseg_file):
-    sum = np.sum(labels, axis=1).reshape(labels.shape[0], 1).repeat(labels.shape[1], axis= 1)*2
-    dir_name = os.path.join(os.path.dirname(sseg_file), 'cache')
-    prefix = os.path.basename(sseg_file)
-    write_file = os.path.join(dir_name, prefix)
-    if not os.path.isdir(dir_name):
-        os.mkdir(dir_name)
-    if os.path.isfile(write_file):
-        return
-    np.savetxt(write_file, labels/sum, delimiter=' ', newline='\n', fmt='%.2e')
-
-
-def vote(label0, label1, label2):
-    if label0 == label1:
-        return label1
-    if label1 == label2:
-        return label1
-    if label0 == label2:
-        return label2
-    return label2
-
-def vote_sseg(label0, label1, label2):
-    if np.array_equal(label0, label1):
-        return label1
-    if np.array_equal(label1, label2):
-        return label1
-    if np.array_equal(label2, label0):
-        return label2
-    return label2
 
 def fill_from_file(mesh, file):
     mesh.filename = ntpath.split(file)[1]
@@ -321,11 +157,8 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
                 edge_nb.append([-1, -1, -1, -1])
                 mesh.ve[edge[0]].append(edges_count)
                 mesh.ve[edge[1]].append(edges_count)
-                mesh.edge_areas.append(0)
                 nb_count.append(0)
                 edges_count += 1
-            mesh.edge_areas[edge2key[edge]] += face_areas[face_id] / 3
-
         face_eid = []
         for idx, edge in enumerate(face_edges):
             edge_key = edge2key[edge]
@@ -343,10 +176,11 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     mesh.gemm_edges = np.array(edge_nb, dtype=np.int64)
     mesh.edges_count = edges_count
     mesh.faces_count = face_id+1
-    mesh.edge_areas = np.array(mesh.edge_areas, dtype=np.float32) / np.sum(face_areas) #Done whats the difference between edge_areas and edge_lenghts?
     mesh.faces = np.array(faces, dtype=np.int32)
     mesh.edge_faces = np.array(edge_faces, dtype=np.int32)
     mesh.faces_edges = np.array(faces_edges, dtype=np.int32)
+    mesh.areas = np.array(face_areas, dtype=np.float32) / np.sum(face_areas)
+
 def compute_face_normals_and_areas(mesh, faces):
     face_normals = np.cross(mesh.vs[faces[:, 1]] - mesh.vs[faces[:, 0]],
                             mesh.vs[faces[:, 2]] - mesh.vs[faces[:, 1]])
@@ -372,21 +206,38 @@ def post_augmentation(mesh, opt):
 
 
 def slide_verts(mesh, prct):
-    edge_points = get_edge_points(mesh)
-    dihedral = dihedral_angle(mesh).squeeze() #todo make fixed_division epsilon=0
-    thr = np.mean(dihedral) + np.std(dihedral)
+    curvatures = curvature_of_vs(mesh)
+    curvatures_main1 = curvatures[:, 0]
+    curvatures_main2 = curvatures[:, 1]
     vids = np.random.permutation(len(mesh.ve))
     target = int(prct * len(vids))
     shifted = 0
     for vi in vids:
         if shifted < target:
+            main1 = curvatures_main1[vi]
+            main2 = curvatures_main2[vi]
             edges = mesh.ve[vi]
-            if min(dihedral[edges]) > 2.65:
+            if main1 < 1. :
                 edge = mesh.edges[np.random.choice(edges)]
                 vi_t = edge[1] if vi == edge[0] else edge[0]
                 nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
                 mesh.vs[vi] = nv
                 shifted += 1
+            elif min(main1,main2) < 1.:
+                if min(main1,main2) == main1:
+                    vi_ts = mesh.edges[edges,1] if vi == mesh.edges[edges,0] else mesh.edges[edges,1]
+                    vi_t = vi_ts[np.argmax(curvatures_main1[vi_ts])]
+                    nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
+                    mesh.vs[vi] = nv
+                    shifted += 1
+                else:
+                    vi_ts = mesh.edges[edges, 1] if vi == mesh.edges[edges, 0] else mesh.edges[edges, 1]
+                    vi_t = vi_ts[np.argmax(curvatures_main2[vi_ts])]
+                    nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
+                    mesh.vs[vi] = nv
+                    shifted += 1
+
+
         else:
             break
     mesh.shifted = shifted / len(mesh.ve)
@@ -502,16 +353,16 @@ def get_face_elengths(mesh):
 
 def extract_features(mesh):
     features = []
-    # todo features of triangle
+    # done
     set_edge_lengths(mesh)
     with np.errstate(divide='raise'):
         try:
-            for extractor in [symmetric_ratios]:#, area_ratios, symmetric_opposite_angles, dihedral_angle]:
+            for extractor in [symmetric_ratios, area_ratios, symmetric_opposite_angles, dihedral_angle]:
                 feature = extractor(mesh)
                 features.append(feature)
-            #features_curvature = curvature(mesh)
-            #for feature in features_curvature:
-             #   features.append(feature)
+            features_curvature = curvature(mesh)
+            for feature in features_curvature:
+                features.append(feature)
             return np.concatenate(features, axis=0)
         except Exception as e:
             print(e)
@@ -665,8 +516,8 @@ def get_ratios(mesh, index):
 
 def get_area_ratios(mesh, index):
     face_neighbor_id = mesh.gemm_faces[:,index]
-    return mesh.face_areas[face_neighbor_id] / mesh.face_areas
-
+    return mesh.areas[face_neighbor_id] / mesh.areas
+''' 
 def get_curvature(mesh, index):
     edges_one_ring = []
     for v in mesh.faces[:, index]:
@@ -688,7 +539,36 @@ def get_curvature(mesh, index):
             shape_operators.append(np.dot(normals_edge[edge_index],normals_vertex) *shape_operator_edge )
         shape_operators = sorted( shape_operators,key=abs)
         curvatures_i.append( [shape_operators[-1],shape_operators[-2],shape_operators[-1]*shape_operators[-2], (shape_operators[-1] +shape_operators[-2]) / 2. ])
+    return np.array(curvatures_i)'''
+def get_curvature(mesh, index):
+    curvatures = curvature_of_vs(mesh)
+    vertices_ids = mesh.faces[:, index]
+    curvatures_i = curvatures[vertices_ids,:]
     return np.array(curvatures_i)
+
+
+def curvature_of_vs(mesh):
+    curvatures = []
+    for vertex_id, edge_one_ring in enumerate(mesh.ve):
+        normals_a, normals_b = get_normals_by_edge(mesh, edge_one_ring)
+        normals_edge = (normals_a + normals_b) / np.linalg.norm(normals_a + normals_b, ord=2, axis=1).reshape(
+            len(normals_a), 1)
+        normals_vertex = np.sum(normals_edge, axis=0) / np.linalg.norm(np.sum(normals_edge, axis=0), ord=2)
+        dot = np.sum(normals_a * normals_b, axis=1)
+        angles_i = np.pi - np.arccos(dot)
+        shape_operators = np.zeros((3, 3), dtype=float)
+        for edge_index, edge in enumerate(edge_one_ring):
+            length = mesh.edge_lengths[edge]
+            edge_vector = mesh.vs[mesh.edges[edge][0]] - mesh.vs[vertex_id] if mesh.edges[edge][1] == vertex_id else \
+            mesh.vs[mesh.edges[edge][1]] - mesh.vs[vertex_id]
+            cross = np.cross(edge_vector / length, normals_edge[edge_index]).reshape((3,1))
+            shape_operator_edge = np.linalg.norm(edge_vector) * np.cos(angles_i[edge_index] / 2) * cross.T * cross
+            shape_operators += np.dot(normals_edge[edge_index], normals_vertex) * shape_operator_edge
+        eigenvalues, _ = np.linalg.eig(shape_operators/2)
+        eigenvalues = sorted(eigenvalues, key=abs)
+        curvatures.append([eigenvalues[-1], eigenvalues[-2], eigenvalues[-1] * eigenvalues[-2],
+                             (eigenvalues[-1] + eigenvalues[-2]) / 2.])
+    return np.array(curvatures)
 
 def get_normals_by_edge(mesh, edge_ids):
     face_ids = mesh.edge_faces[edge_ids]
