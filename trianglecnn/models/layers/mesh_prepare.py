@@ -72,8 +72,8 @@ def from_scratch(file, opt):
     """
     _, edge_faces, edges_dict = get_edge_faces(faces)
     build_gemm(mesh_data, faces, areas, edge_faces)
-    """if opt.num_aug > 1:
-        post_augmentation(mesh_data, opt)"""
+    if opt.num_aug > 1:
+        post_augmentation(mesh_data, opt)
     mesh_data.features = extract_features(mesh_data)
     return mesh_data
 
@@ -206,6 +206,7 @@ def post_augmentation(mesh, opt):
 
 
 def slide_verts(mesh, prct):
+    set_edge_lengths(mesh)
     curvatures = curvature_of_vs(mesh)
     curvatures_main1 = curvatures[:, 0]
     curvatures_main2 = curvatures[:, 1]
@@ -217,7 +218,7 @@ def slide_verts(mesh, prct):
             main1 = curvatures_main1[vi]
             main2 = curvatures_main2[vi]
             edges = mesh.ve[vi]
-            if main1 < 1. :
+            if main1 < 1. and main2 < 1. :
                 edge = mesh.edges[np.random.choice(edges)]
                 vi_t = edge[1] if vi == edge[0] else edge[0]
                 nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
@@ -225,23 +226,28 @@ def slide_verts(mesh, prct):
                 shifted += 1
             elif min(main1,main2) < 1.:
                 if min(main1,main2) == main1:
-                    vi_ts = mesh.edges[edges,1] if vi == mesh.edges[edges,0] else mesh.edges[edges,1]
+                    vi_ts = []
+                    for edge in mesh.edges[edges]:
+                        vi_t = edge[1] if vi == edge[0] else edge[0]
+                        vi_ts.append(vi_t)
                     vi_t = vi_ts[np.argmax(curvatures_main1[vi_ts])]
                     nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
                     mesh.vs[vi] = nv
                     shifted += 1
                 else:
-                    vi_ts = mesh.edges[edges, 1] if vi == mesh.edges[edges, 0] else mesh.edges[edges, 1]
+                    vi_ts = []
+                    for edge in mesh.edges[edges]:
+                        vi_t = edge[1] if vi == edge[0] else edge[0]
+                        vi_ts.append(vi_t)
                     vi_t = vi_ts[np.argmax(curvatures_main2[vi_ts])]
                     nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
                     mesh.vs[vi] = nv
                     shifted += 1
-
-
         else:
             break
     mesh.shifted = shifted / len(mesh.ve)
-
+    #print(mesh.filename)
+    #print(shifted)
 
 def scale_verts(mesh, mean=1, var=0.1):
     for i in range(mesh.vs.shape[1]):
@@ -401,15 +407,16 @@ def curvature(mesh):
     curvatures_mean = []
     for i in range(3):
         curvature_i = get_curvature(mesh, i)
-        curvatures_main1.append(curvature_i[:,0])
-        curvatures_main2.append(curvature_i[:,1])
+        #curvatures_main1.append(curvature_i[:,0])
+        #curvatures_main2.append(curvature_i[:,1])
         curvatures_gauss.append(curvature_i[:,2])
         curvatures_mean.append(curvature_i[:,3])
-    curvatures_main1 = np.array(curvatures_main1)
-    curvatures_main2 = np.array(curvatures_main2)
+    #curvatures_main1 = np.array(curvatures_main1)
+    #curvatures_main2 = np.array(curvatures_main2)
     curvatures_gauss = np.array(curvatures_gauss)
     curvatures_mean = np.array(curvatures_mean)
-    return np.sort(curvatures_main1, axis=0),np.sort(curvatures_main2, axis=0),np.sort(curvatures_gauss, axis=0),np.sort(curvatures_mean, axis=0)
+    #return np.sort(curvatures_main1, axis=0),np.sort(curvatures_main2, axis=0),
+    return np.sort(curvatures_gauss, axis=0),np.sort(curvatures_mean, axis=0)
 
 def symmetric_ratios(mesh):
     """ computes two ratios: one for each face shared between the edge

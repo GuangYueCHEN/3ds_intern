@@ -84,7 +84,6 @@ class Mesh:
                 file = '%s/%s_%d%s' % (self.export_folder, filename, self.pool_count, file_extension)
             else:
                 return
-        faces = []
         vs = self.vs[self.v_mask]
 
         with open(file, 'w+') as f:
@@ -92,31 +91,53 @@ class Mesh:
                 vcol = ' %f %f %f' % (vcolor[vi, 0], vcolor[vi, 1], vcolor[vi, 2]) if vcolor is not None else ''
                 f.write("v %f %f %f%s\n" % (v[0], v[1], v[2], vcol))
             for face_id in range(len(self.faces) - 1):
-                f.write("f %d %d %d\n" % (self.faces[face_id][0] + 1, self.faces[face_id][1] + 1, self.faces[face_id][2] + 1))
-            f.write("f %d %d %d" % (self.faces[-1][0] + 1, self.faces[-1][1] + 1, self.faces[-1][2] + 1))
+                v1 = np.size(self.v_mask[0:self.faces[face_id][0]]) - np.sum(self.v_mask[0:self.faces[face_id][0]])
+                v2 = np.size(self.v_mask[0:self.faces[face_id][1]]) - np.sum(self.v_mask[0:self.faces[face_id][1]])
+                v3 = np.size(self.v_mask[0:self.faces[face_id][2]]) - np.sum(self.v_mask[0:self.faces[face_id][2]])
+                f.write("f %d %d %d\n" % (self.faces[face_id][0] - v1 , self.faces[face_id][1] -v2 , self.faces[face_id][2] - v3))
+            v1 = np.size(self.v_mask[0:self.faces[-1][0]]) - np.sum(self.v_mask[0:self.faces[-1][0]])
+            v2 = np.size(self.v_mask[0:self.faces[-1][1]]) - np.sum(self.v_mask[0:self.faces[-1][1]])
+            v3 = np.size(self.v_mask[0:self.faces[-1][2]]) - np.sum(self.v_mask[0:self.faces[-1][2]])
+            f.write("f %d %d %d" % (self.faces[-1][0] -v1 , self.faces[-1][1]-v2 , self.faces[-1][2]-v3 ))
 
 
     def export_segments(self, segments):
         if not self.export_folder:
             return
         cur_segments = segments
+        colors =["15 167 175","230 81 81", "142 105 252","248 235 57","51 159 255","225 117 231","97 243 185",\
+                      "161 183 196"]
+
         for i in range(self.pool_count + 1):
             filename, file_extension = os.path.splitext(self.filename)
             file = '%s/%s_%d%s' % (self.export_folder, filename, i, file_extension)
+            off = '%s/%s_%d.off' % (self.export_folder, filename, i)
             fh, abs_path = mkstemp()
             face_key = 0
             with os.fdopen(fh, 'w') as new_file:
+                new_file.write('OFF\n')
+                count = 0
+                faces = 0
+                with open(file) as old_file:
+                    for line in old_file:
+                        if line[0] == 'v':
+                            count += 1
+                        elif line[0] == 'f':
+                            faces +=1
+                new_file.write('%d %d 0\n' % (count, faces))
                 with open(file) as old_file:
                     for line in old_file:
                         if line[0] == 'f':
-                            new_file.write('%s %d' % (line.strip(), cur_segments[face_key]))
+                            new_file.write('3 %s %s 255' % (line[1:].strip(), colors[cur_segments[face_key]]))
                             if face_key < len(cur_segments):
                                 face_key += 1
                                 new_file.write('\n')
+                        elif line[0] == 'v':
+                            new_file.write('%s\n' % line[2:].strip())
                         else:
                             new_file.write(line)
             os.remove(file)
-            move(abs_path, file)
+            move(abs_path, off)
             if i < len(self.history_data['faces_mask']):
                 cur_segments = segments[:len(self.history_data['faces_mask'][i])]
                 cur_segments = cur_segments[self.history_data['faces_mask'][i]]
