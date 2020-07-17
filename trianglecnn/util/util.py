@@ -26,9 +26,9 @@ def seg_accuracy(predicted, ssegs, meshes):
     ssegs = ssegs.squeeze(-1)
     correct_mat = ssegs.gather(2, predicted.cpu().unsqueeze(dim=2))
     for mesh_id, mesh in enumerate(meshes):
-        correct_vec = correct_mat[mesh_id, :mesh.edges_count, 0]
-        edge_areas = torch.from_numpy(mesh.get_edge_areas())
-        correct += (correct_vec.float() * edge_areas).sum()
+        correct_vec = correct_mat[mesh_id, :mesh.faces_count, 0]
+        face_areas = torch.from_numpy(mesh.get_face_areas())
+        correct += (correct_vec.float() * face_areas).sum()
     return correct
 
 def print_network(net):
