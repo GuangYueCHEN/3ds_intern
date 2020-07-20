@@ -363,12 +363,12 @@ def extract_features(mesh):
     set_edge_lengths(mesh)
     with np.errstate(divide='raise'):
         try:
-            for extractor in [symmetric_ratios, area_ratios, symmetric_opposite_angles, dihedral_angle]:
+            for extractor in [symmetric_ratios, area_ratios, symmetric_opposite_angles, dihedral_angle, normal]:
                 feature = extractor(mesh)
                 features.append(feature)
-            features_curvature = curvature(mesh)
+            '''features_curvature = curvature(mesh)
             for feature in features_curvature:
-                features.append(feature)
+                features.append(feature)'''
             return np.concatenate(features, axis=0)
         except Exception as e:
             print(e)
@@ -385,6 +385,10 @@ def dihedral_angle(mesh):
     angles = np.array(angles)
     return np.sort(angles, axis=0)
 
+
+def normal(mesh):
+    normals_a, _ = get_normals(mesh, 0)
+    return normals_a.T
 
 def symmetric_opposite_angles(mesh):
     """ computes two angles: one for each face shared between the edge
@@ -405,18 +409,19 @@ def curvature(mesh):
     curvatures_main2 = []
     curvatures_gauss = []
     curvatures_mean = []
+
+    curvatures = curvature_of_vs(mesh)
     for i in range(3):
-        curvature_i = get_curvature(mesh, i)
-        #curvatures_main1.append(curvature_i[:,0])
-        #curvatures_main2.append(curvature_i[:,1])
+        curvature_i = get_curvature(mesh, i, curvatures)
+        curvatures_main1.append(curvature_i[:,0])
+        curvatures_main2.append(curvature_i[:,1])
         curvatures_gauss.append(curvature_i[:,2])
         curvatures_mean.append(curvature_i[:,3])
-    #curvatures_main1 = np.array(curvatures_main1)
-    #curvatures_main2 = np.array(curvatures_main2)
+    curvatures_main1 = np.array(curvatures_main1)
+    curvatures_main2 = np.array(curvatures_main2)
     curvatures_gauss = np.array(curvatures_gauss)
     curvatures_mean = np.array(curvatures_mean)
-    #return np.sort(curvatures_main1, axis=0),np.sort(curvatures_main2, axis=0),
-    return np.sort(curvatures_gauss, axis=0),np.sort(curvatures_mean, axis=0)
+    return np.sort(curvatures_main1, axis=0),np.sort(curvatures_main2, axis=0),np.sort(curvatures_gauss, axis=0),np.sort(curvatures_mean, axis=0)
 
 def symmetric_ratios(mesh):
     """ computes two ratios: one for each face shared between the edge
@@ -524,31 +529,8 @@ def get_ratios(mesh, index):
 def get_area_ratios(mesh, index):
     face_neighbor_id = mesh.gemm_faces[:,index]
     return mesh.areas[face_neighbor_id] / mesh.areas
-''' 
-def get_curvature(mesh, index):
-    edges_one_ring = []
-    for v in mesh.faces[:, index]:
-        edges_one_ring.append( mesh.ve[v])
-    edges_one_ring = np.asarray(edges_one_ring)
-    curvatures_i = []
-    for face_id, edge_one_ring in enumerate(edges_one_ring):
-        normals_a, normals_b = get_normals_by_edge(mesh, edge_one_ring)
-        normals_edge =( normals_a + normals_b ) / np.linalg.norm(normals_a +normals_b, ord=2, axis=1).reshape(len(normals_a),1)
-        normals_vertex = np.sum(normals_edge, axis=0) / np.linalg.norm(np.sum(normals_edge, axis=0), ord=2)
-        dot = np.sum(normals_a * normals_b, axis=1)
-        angles_i = np.pi - np.arccos(dot)
-        shape_operators = []
-        for  edge_index, edge in enumerate(edge_one_ring):
-            length = mesh.edge_lengths[edge]
-            edge_vector = mesh.vs[mesh.edges[edge][0] if mesh.edges[edge][1] == mesh.faces[face_id, index] else mesh.edges[edge][1] ] - mesh.vs[mesh.faces[face_id, index] ]
-            cross = np.cross(edge_vector/length,normals_edge[edge_index])
-            shape_operator_edge =  length*np.cos(angles_i[edge_index]/2) * np.dot(cross,cross.T)
-            shape_operators.append(np.dot(normals_edge[edge_index],normals_vertex) *shape_operator_edge )
-        shape_operators = sorted( shape_operators,key=abs)
-        curvatures_i.append( [shape_operators[-1],shape_operators[-2],shape_operators[-1]*shape_operators[-2], (shape_operators[-1] +shape_operators[-2]) / 2. ])
-    return np.array(curvatures_i)'''
-def get_curvature(mesh, index):
-    curvatures = curvature_of_vs(mesh)
+
+def get_curvature(mesh, index,curvatures):
     vertices_ids = mesh.faces[:, index]
     curvatures_i = curvatures[vertices_ids,:]
     return np.array(curvatures_i)
@@ -560,21 +542,26 @@ def curvature_of_vs(mesh):
         normals_a, normals_b = get_normals_by_edge(mesh, edge_one_ring)
         normals_edge = (normals_a + normals_b) / np.linalg.norm(normals_a + normals_b, ord=2, axis=1).reshape(
             len(normals_a), 1)
-        normals_vertex = np.sum(normals_edge, axis=0) / np.linalg.norm(np.sum(normals_edge, axis=0), ord=2)
-        dot = np.sum(normals_a * normals_b, axis=1)
+        normals_vertex = np.sum(normals_edge/mesh.edge_lengths[edge_one_ring].reshape(
+            len(normals_edge), 1), axis=0)
+        normals_vertex /=  np.linalg.norm(normals_vertex, ord=2)
+        dot = np.sum(normals_a/ np.linalg.norm(normals_a, ord=2, axis=1).reshape(
+            len(normals_a), 1) * normals_b/ np.linalg.norm(normals_b, ord=2, axis=1).reshape(
+            len(normals_b), 1), axis=1)
         angles_i = np.pi - np.arccos(dot)
         shape_operators = np.zeros((3, 3), dtype=float)
         for edge_index, edge in enumerate(edge_one_ring):
-            length = mesh.edge_lengths[edge]
             edge_vector = mesh.vs[mesh.edges[edge][0]] - mesh.vs[vertex_id] if mesh.edges[edge][1] == vertex_id else \
             mesh.vs[mesh.edges[edge][1]] - mesh.vs[vertex_id]
-            cross = np.cross(edge_vector / length, normals_edge[edge_index]).reshape((3,1))
-            shape_operator_edge = np.linalg.norm(edge_vector) * np.cos(angles_i[edge_index] / 2) * cross.T * cross
+            cross = np.cross(edge_vector / np.linalg.norm(edge_vector), normals_edge[edge_index]).reshape((3,1))
+            he = 2 / np.linalg.norm(edge_vector) * np.cos(angles_i[edge_index] / 2)
+            shape_operator_edge = he * cross.T * cross
             shape_operators += np.dot(normals_edge[edge_index], normals_vertex) * shape_operator_edge
         eigenvalues, _ = np.linalg.eig(shape_operators/2)
         eigenvalues = sorted(eigenvalues, key=abs)
         curvatures.append([eigenvalues[-1], eigenvalues[-2], eigenvalues[-1] * eigenvalues[-2],
                              (eigenvalues[-1] + eigenvalues[-2]) / 2.])
+        print(curvatures[-1])
     return np.array(curvatures)
 
 def get_normals_by_edge(mesh, edge_ids):
