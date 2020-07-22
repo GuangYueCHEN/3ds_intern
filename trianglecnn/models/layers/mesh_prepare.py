@@ -2,6 +2,7 @@ import numpy as np
 import os
 import ntpath
 
+TOLERENCE = 1.e-6
 
 def fill_mesh(mesh2fill, file: str, opt):
     load_path = get_mesh_path(file, opt.num_aug)
@@ -49,7 +50,7 @@ def from_scratch(file, opt):
             return eval('self.' + item)
 
     mesh_data = MeshPrep()
-    mesh_data.vs = mesh_data.edges = mesh_data.faces= None
+    mesh_data.vs = mesh_data.edges = mesh_data.faces = None
     mesh_data.gemm_faces = None
     mesh_data.gemm_edges = None
     mesh_data.edges_count = None
@@ -72,8 +73,10 @@ def from_scratch(file, opt):
     """
     _, edge_faces, edges_dict = get_edge_faces(faces)
     build_gemm(mesh_data, faces, areas, edge_faces)
-    if opt.num_aug > 1:
-        post_augmentation(mesh_data, opt)
+    '''if opt.num_aug > 1:
+        post_augmentation(mesh_data, opt)'''
+    set_edge_lengths(mesh_data)
+    curvature_of_vs(mesh_data)
     mesh_data.features = extract_features(mesh_data)
     return mesh_data
 
@@ -139,9 +142,11 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     edge2key = dict()
     edges = []
     edges_count = 0
+    faces_count = 0
     nb_count = []
     faces_edges = []
     for face_id, face in enumerate(faces):
+        faces_count += 1
         face_edges = []
         face_nb.append([-1, -1, -1])
         for i in range(3):
@@ -175,7 +180,7 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     mesh.gemm_faces = np.array(face_nb, dtype=np.int64)
     mesh.gemm_edges = np.array(edge_nb, dtype=np.int64)
     mesh.edges_count = edges_count
-    mesh.faces_count = face_id+1
+    mesh.faces_count = faces_count
     mesh.faces = np.array(faces, dtype=np.int32)
     mesh.edge_faces = np.array(edge_faces, dtype=np.int32)
     mesh.faces_edges = np.array(faces_edges, dtype=np.int32)
@@ -200,6 +205,7 @@ def augmentation(mesh, opt, faces=None):
     return faces
 
 
+'''
 def post_augmentation(mesh, opt):
     if hasattr(opt, 'slide_verts') and opt.slide_verts:
         slide_verts(mesh, opt.slide_verts)
@@ -247,7 +253,7 @@ def slide_verts(mesh, prct):
             break
     mesh.shifted = shifted / len(mesh.ve)
     #print(mesh.filename)
-    #print(shifted)
+    #print(shifted)'''
 
 def scale_verts(mesh, mean=1, var=0.1):
     for i in range(mesh.vs.shape[1]):
@@ -304,7 +310,7 @@ def flip_edges(mesh, prct, faces):
                                 if face_nb == edge_info[2 + (i + 1) % 2]:
                                     edge_faces[cur_edge_key, 2 + idx] = face_id
                 flipped += 1
-    #print(flipped)
+    '''#print(flipped)'''
     return faces
 
 
@@ -343,7 +349,7 @@ def get_edge_faces(faces):
     return edge_count, np.array(edge_faces), edge2keys
 
 
-def set_edge_lengths(mesh ):
+def set_edge_lengths(mesh):
     edge_lengths = np.linalg.norm(mesh.vs[mesh.edges[:, 0]] - mesh.vs[mesh.edges[:, 1]], ord=2, axis=1)
     mesh.edge_lengths = edge_lengths
 
@@ -351,24 +357,23 @@ def get_face_elengths(mesh):
     edges_lengths = []
     for face_id, face in mesh.faces:
         edge_lengths = []
-        edge_ids = mesh.faces_edges[face_id];
+        edge_ids = mesh.faces_edges[face_id]
         for edge_id in edge_ids:
             edge_lengths.append(mesh.edge_lengths[edge_id])
         edges_lengths.append(edge_lengths)
-    return  edges_lengths
+    return edges_lengths
 
 def extract_features(mesh):
     features = []
     # done
-    set_edge_lengths(mesh)
     with np.errstate(divide='raise'):
         try:
-            for extractor in [symmetric_ratios, area_ratios, symmetric_opposite_angles, dihedral_angle, normal]:
+            for extractor in [symmetric_ratios, area_ratios, symmetric_opposite_angles, normal, dihedral_angle]:
                 feature = extractor(mesh)
                 features.append(feature)
-            '''features_curvature = curvature(mesh)
+            features_curvature = curvature(mesh)
             for feature in features_curvature:
-                features.append(feature)'''
+                features.append(feature)
             return np.concatenate(features, axis=0)
         except Exception as e:
             print(e)
@@ -395,40 +400,20 @@ def symmetric_opposite_angles(mesh):
         the angle is in each face opposite the edge
         sort handles order ambiguity
     """
-    angles =[]
+    angles = []
     for i in range(3):
         angles_i = get_opposite_angles(mesh, i)
         angles.append(angles_i)
     angles = np.array(angles)
     return np.sort(angles, axis=0)
 
-def curvature(mesh):
-    """
-    """
-    curvatures_main1 =[]
-    curvatures_main2 = []
-    curvatures_gauss = []
-    curvatures_mean = []
-
-    curvatures = curvature_of_vs(mesh)
-    for i in range(3):
-        curvature_i = get_curvature(mesh, i, curvatures)
-        curvatures_main1.append(curvature_i[:,0])
-        curvatures_main2.append(curvature_i[:,1])
-        curvatures_gauss.append(curvature_i[:,2])
-        curvatures_mean.append(curvature_i[:,3])
-    curvatures_main1 = np.array(curvatures_main1)
-    curvatures_main2 = np.array(curvatures_main2)
-    curvatures_gauss = np.array(curvatures_gauss)
-    curvatures_mean = np.array(curvatures_mean)
-    return np.sort(curvatures_main1, axis=0),np.sort(curvatures_main2, axis=0),np.sort(curvatures_gauss, axis=0),np.sort(curvatures_mean, axis=0)
 
 def symmetric_ratios(mesh):
     """ computes two ratios: one for each face shared between the edge
         the ratio is between the height / base (edge) of each triangle
         sort handles order ambiguity
     """
-    ratios= []
+    ratios = []
     for i in range(3):
         ratios_i = get_ratios(mesh, i)
         ratios.append(ratios_i)
@@ -440,7 +425,7 @@ def area_ratios(mesh):
         the ratio is between the height / base (edge) of each triangle
         sort handles order ambiguity
     """
-    ratios= []
+    ratios = []
     for i in range(3):
         ratios_i = get_area_ratios(mesh, i)
         ratios.append(ratios_i)
@@ -486,26 +471,26 @@ def get_side_points(mesh, edge_id):
 
 
 def get_normals(mesh,  index):
-    face_neighbor_id = mesh.gemm_faces[:,index]
+    face_neighbor_id = mesh.gemm_faces[:, index]
     v_neighbor_ids = []
     for face_id, face in enumerate(mesh.faces):
         v_neighbor_id = np.setdiff1d(mesh.faces[face_neighbor_id[face_id]], mesh.faces[face_id])[0]
         v_neighbor_ids.append(v_neighbor_id)
-    edge_a = mesh.vs[mesh.faces[:,(index +2)%3]] - mesh.vs[mesh.faces[:,(index +1)%3]]
-    edge_b = mesh.vs[mesh.faces[:,index  ]] - mesh.vs[mesh.faces[:,(index +1)%3]]
-    edge_b_inverse = mesh.vs[mesh.faces[:,(index +1)%3]] - mesh.vs[mesh.faces[:,index  ]]
-    edge_c = mesh.vs[v_neighbor_ids] - mesh.vs[mesh.faces[:,index ]]
+    edge_a = mesh.vs[mesh.faces[:, (index + 2) % 3]] - mesh.vs[mesh.faces[:, (index + 1) % 3]]
+    edge_b = mesh.vs[mesh.faces[:, index]] - mesh.vs[mesh.faces[:, (index + 1) % 3]]
+    edge_b_inverse = mesh.vs[mesh.faces[:, (index + 1) % 3]] - mesh.vs[mesh.faces[:, index]]
+    edge_c = mesh.vs[v_neighbor_ids] - mesh.vs[mesh.faces[:, index]]
     normals = np.cross(edge_a, edge_b)
     normals_neighbor = np.cross(edge_c, edge_b_inverse)
-    div = fixed_division(np.linalg.norm(normals, ord=2, axis=1), epsilon=0.1)
-    div_ = fixed_division(np.linalg.norm(normals_neighbor, ord=2, axis=1), epsilon=0.1)
+    div = fixed_division(np.linalg.norm(normals, ord=2, axis=1), epsilon=1.e-6)
+    div_ = fixed_division(np.linalg.norm(normals_neighbor, ord=2, axis=1), epsilon=1.e-6)
     normals /= div[:, np.newaxis]
     normals_neighbor /= div_[:, np.newaxis]
     return normals, normals_neighbor
 
 def get_opposite_angles(mesh, index):
-    edges_a = mesh.vs[mesh.faces[:, index]] - mesh.vs[mesh.faces[:, (index+2)%3]]
-    edges_b = mesh.vs[mesh.faces[:, (index+1)%3]] - mesh.vs[mesh.faces[:, (index+2)%3]]
+    edges_a = mesh.vs[mesh.faces[:, index]] - mesh.vs[mesh.faces[:, (index+2) % 3]]
+    edges_b = mesh.vs[mesh.faces[:, (index+1) % 3]] - mesh.vs[mesh.faces[:, (index+2) % 3]]
 
     edges_a /= fixed_division(np.linalg.norm(edges_a, ord=2, axis=1), epsilon=0.1)[:, np.newaxis]
     edges_b /= fixed_division(np.linalg.norm(edges_b, ord=2, axis=1), epsilon=0.1)[:, np.newaxis]
@@ -516,9 +501,9 @@ def get_opposite_angles(mesh, index):
 def get_ratios(mesh, index):
     edges_id = mesh.faces_edges[:, index]
     edges_lengths = mesh.edge_lengths[edges_id]
-    point_o = mesh.vs[mesh.faces[:,(index+2)%3]]
-    point_a = mesh.vs[mesh.faces[:,index]]
-    point_b = mesh.vs[mesh.faces[:,(index+1)%3]]
+    point_o = mesh.vs[mesh.faces[:, (index+2) % 3]]
+    point_a = mesh.vs[mesh.faces[:, index]]
+    point_b = mesh.vs[mesh.faces[:, (index+1) % 3]]
     line_ab = point_b - point_a
     projection_length = np.sum(line_ab * (point_o - point_a), axis=1) / fixed_division(
         np.linalg.norm(line_ab, ord=2, axis=1), epsilon=0.1)
@@ -527,13 +512,37 @@ def get_ratios(mesh, index):
     return d / edges_lengths
 
 def get_area_ratios(mesh, index):
-    face_neighbor_id = mesh.gemm_faces[:,index]
+    face_neighbor_id = mesh.gemm_faces[:, index]
     return mesh.areas[face_neighbor_id] / mesh.areas
 
-def get_curvature(mesh, index,curvatures):
+def curvature(mesh):
+    """
+    """
+    curvatures_main1 =[]
+    curvatures_main2 = []
+    curvatures_gauss = []
+    curvatures_mean = []
+
+    curvatures = curvature_of_vs(mesh)
+    for i in range(3):
+        curvature_i = get_curvature(mesh, i, curvatures)
+        curvatures_main1.append(curvature_i[:, 0])
+        curvatures_main2.append(curvature_i[:, 1])
+        curvatures_gauss.append(curvature_i[:, 2])
+        curvatures_mean.append(curvature_i[:, 3])
+    curvatures_main1 = np.array(curvatures_main1)
+    curvatures_main2 = np.array(curvatures_main2)
+    curvatures_gauss = np.array(curvatures_gauss)
+    curvatures_mean = np.array(curvatures_mean)
+    return np.sort(curvatures_main1, axis=0), np.sort(curvatures_main2, axis=0), np.sort(curvatures_gauss, axis=0),\
+        np.sort(curvatures_mean, axis=0)
+
+def get_curvature(mesh, index, curvatures):
     vertices_ids = mesh.faces[:, index]
-    curvatures_i = curvatures[vertices_ids,:]
+    curvatures_i = curvatures[vertices_ids, :]
     return np.array(curvatures_i)
+
+'''
 
 
 def curvature_of_vs(mesh):
@@ -566,8 +575,167 @@ def curvature_of_vs(mesh):
 
 def get_normals_by_edge(mesh, edge_ids):
     face_ids = mesh.edge_faces[edge_ids]
-    normals, _ = get_normals(mesh,0)
-    return normals[face_ids[:,2]],normals[face_ids[:, 3]]
+    normals, _ = get_normals(mesh, 0)
+    return normals[face_ids[:, 2]], normals[face_ids[:, 3]]
+'''
+
+
+def curvature_of_vs(mesh):
+    normals_triangles, _ = get_normals(mesh, 0)
+    v1s, v2s = complete_orthogonal_basis(normals_triangles)
+    normals_vetices = get_normals_vertices(mesh, normals_triangles)
+    vertices_v1s, vertices_v2s = complete_orthogonal_basis(normals_vetices)
+    second_ff_vertices = np.zeros((len(mesh.vs), 2, 2), dtype=float)
+    total_weight = np.zeros((len(mesh.vs), 1), dtype=float)
+    weights = get_weight_by_triangle(mesh)
+    for face_id, face in enumerate(mesh.faces):
+        v1 = v1s[face_id]
+        v2 = v2s[face_id]
+        n_t = normals_triangles[face_id]
+        mat = np.zeros((3, 3), dtype=float)
+        b = np.zeros((3, 1), dtype=float)
+        for i in range(3):
+            edge_vector = mesh.vs[face[(i+1) % 3]] - mesh.vs[face[i]]
+            nc_input_x = np.dot(edge_vector, v1)
+            nc_input_y = np.dot(edge_vector, v2)
+            tmp = normals_vetices[face[(i+1) % 3]] - normals_vetices[face[i]]
+            nc_output_x = np.dot(tmp, v1)
+            nc_output_y = np.dot(tmp, v2)
+            mat[0, 0] += nc_input_x * nc_input_x
+            mat[1, 0] += nc_input_x * nc_input_y
+            b[0] += nc_input_x * nc_output_x
+            mat[1, 1] += nc_input_x * nc_input_x + nc_input_y * nc_input_y
+            b[1] += (nc_input_x * nc_output_y + nc_output_x * nc_input_y)
+            mat[2, 2] += nc_input_y * nc_input_y
+            b[2] += nc_input_y * nc_output_y
+        mat[2, 1] = mat[0, 1] = mat[1, 2] = mat[1, 0]
+        mat = np.linalg.inv(mat)
+        tmp = np.dot(mat, b)
+        second_ff = np.array([[tmp[0], tmp[1]], [tmp[1], tmp[2]]]).reshape(2, 2)
+        for i in range(3):
+            n_v = normals_vetices[face[i]]
+            v_v1 = vertices_v1s[face[i]]
+            v_v2 = vertices_v2s[face[i]]
+            cross = np.cross(n_t, n_v)
+            if np.linalg.norm(cross) < TOLERENCE:
+                local_transfo = change_second_fundamental_from_frame(second_ff, v1, v2, v_v1, v_v2)
+                second_ff_vertices[face[i]] += weights[face_id, i] * local_transfo
+            else:
+                mat_rotation = rotate_frame(n_t, n_v)
+                new_v1 = np.dot(mat_rotation, v1)
+                new_v2 = np.dot(mat_rotation, v2)
+                local_transfo = change_second_fundamental_from_frame(second_ff, new_v1, new_v2, v_v1, v_v2)
+                second_ff_vertices[face[i]] += weights[face_id, i] * local_transfo
+            total_weight[face[i]] += weights[face_id, i]
+    curvatures = []
+    for v_id, vertex in enumerate(mesh.vs):
+        total_weight_v = total_weight[v_id]
+        second_ff_vertices[v_id] = 1./total_weight_v * second_ff_vertices[v_id]
+        eigenvalues, _ = np.linalg.eig(second_ff_vertices[v_id])
+        curvatures_i = [eigenvalues[0], eigenvalues[1], eigenvalues[0] * eigenvalues[1],
+                             (eigenvalues[0] + eigenvalues[1]) / 2.]
+        curvatures.append(curvatures_i)
+    return np.array(curvatures, dtype=float)
+
+def get_weight_by_triangle(mesh):
+    weights = []
+    for face_id, face in enumerate(mesh.faces):
+        res = [0., 0., 0.]
+        if mesh.areas[face_id] < TOLERENCE:
+            weights.append(res)
+            continue
+        obtuse_angle = [False, False, False]
+        for i in range(3):
+            e1 = mesh.vs[face[(i + 2) % 3]] - mesh.vs[face[i]]
+            e2 = mesh.vs[face[(i + 1) % 3]] - mesh.vs[face[i]]
+            if np.dot(e1, e2) < 0.:
+                obtuse_angle[i] = True
+        is_triangle_obtuse = obtuse_angle[0] | obtuse_angle[1] | obtuse_angle[2]
+        for i in range(3):
+            if not is_triangle_obtuse:
+                a1_prev = mesh.vs[face[i]] - mesh.vs[face[(i + 1) % 3]]
+                a1_next = mesh.vs[face[(i + 2) % 3]] - mesh.vs[face[(i + 1) % 3]]
+                a2_prev = mesh.vs[face[(i + 1) % 3]] - mesh.vs[face[(i + 2) % 3]]
+                a2_next = mesh.vs[face[i]] - mesh.vs[face[(i + 2) % 3]]
+                e1 = mesh.vs[face[(i + 2) % 3]] - mesh.vs[face[i]]
+                e2 = mesh.vs[face[(i + 1) % 3]] - mesh.vs[face[i]]
+                test_cotan1 = abs(np.dot(a1_prev, a1_next) / np.linalg.norm(np.cross(a1_prev, a1_next)))
+                test_cotan2 = abs(np.dot(a2_prev, a2_next) / np.linalg.norm(np.cross(a2_prev, a2_next)))
+                res[i] = 1./8. * (np.linalg.norm(e2)**2 * test_cotan2 + np.linalg.norm(e1)**2 * test_cotan1)
+            else:
+                if obtuse_angle[i]:
+                    res[i] = 0.5 * mesh.areas[face_id]
+                else:
+                    res[i] = 0.25 * mesh.areas[face_id]
+        weights.append(res)
+    return np.array(weights, dtype=float)
+
+def change_second_fundamental_from_frame(second_ff, v1, v2, v_v1, v_v2):
+    up = np.zeros((2, 1), dtype=float)
+    vp = np.zeros((2, 1), dtype=float)
+    res = np.zeros((2, 2), dtype=float)
+    up[0] = np.dot(v1, v_v1)
+    up[1] = np.dot(v2, v_v1)
+    vp[0] = np.dot(v1, v_v2)
+    vp[1] = np.dot(v2, v_v2)
+    res[0, 0] = np.dot(np.dot(second_ff, up).T, up)
+    res[0, 1] = res[1, 0] = np.dot(np.dot(second_ff, vp).T, up)
+    res[1, 1] = np.dot(np.dot(second_ff, vp).T, vp)
+    return res
+
+def rotate_frame(normal_triangle, normal_vertex):
+    axis = np.cross(normal_triangle, normal_vertex)
+    cos = np.dot(normal_triangle, normal_vertex)
+    sin = np.linalg.norm(axis)
+    div = fixed_division(np.linalg.norm(axis, ord=2), epsilon=1.e-6)
+    axis /= div
+    res = np.zeros((3, 3), dtype=float)
+    res[0, 0] = cos + axis[0] * axis[0] * (1. - cos)
+    res[0, 1] = axis[0] * axis[1] * (1. - cos) + axis[2] * sin
+    res[0, 2] = axis[2] * axis[1] * (1. - cos) - axis[1] * sin
+    res[1, 0] = axis[0] * axis[1] * (1. - cos) - axis[2] * sin
+    res[1, 1] = cos + axis[1] * axis[1] * (1. - cos)
+    res[1, 2] = axis[2] * axis[1] * (1. - cos) + axis[0] * sin
+    res[2, 0] = axis[0] * axis[2] * (1. - cos) + axis[1] * sin
+    res[2, 1] = axis[2] * axis[1] * (1. - cos) - axis[0] * sin
+    res[2, 2] = cos + axis[2] * axis[2] * (1. - cos)
+    return res.T
+
+def get_normals_vertices(mesh, normals_triangles):
+    normals_vetices = []
+    for vertex_id, edge_one_ring in enumerate(mesh.ve):
+        face_ids = mesh.edge_faces[edge_one_ring]
+        normals_a = normals_triangles[face_ids[:, 2]]
+        normals_b = normals_triangles[face_ids[:, 3]]
+        div = fixed_division(np.linalg.norm(normals_a + normals_b, ord=2, axis=1), epsilon=1.e-6)
+        normals_edge = (normals_a + normals_b) / div[:, np.newaxis]
+        normal_vertex = np.sum(normals_edge / mesh.edge_lengths[edge_one_ring].reshape(
+            len(normals_edge), 1), axis=0)
+        div = fixed_division(np.linalg.norm(normal_vertex, ord=2), epsilon=1.e-6)
+        normal_vertex /= div
+        normals_vetices.append(normal_vertex)
+    return np.array(normals_vetices, dtype=np.float32)
+
+def complete_orthogonal_basis(normals):
+    basis_x = []
+    basis_y = []
+    for new_z in normals:
+        new_x = np.array([1., 0., 0.])
+        new_y = np.cross(new_z, new_x)
+        if np.linalg.norm(new_y)**2 < TOLERENCE:
+            new_x = np.array([0., 1., 0.])
+            new_y = np.cross(new_z, new_x)
+            if np.linalg.norm(new_y)**2 < TOLERENCE:
+                new_x = np.array([0., 0., 1.])
+                new_y = np.cross(new_z, new_x)
+        div = fixed_division(np.linalg.norm(new_y, ord=2 ), epsilon=1.e-6)
+        new_y /= div
+        new_x = np.cross(new_y, new_z)
+        div = fixed_division(np.linalg.norm(new_x, ord=2), epsilon=1.e-6)
+        new_x /= div
+        basis_x.append(new_x)
+        basis_y.append(new_y)
+    return np.array(basis_x, dtype=np.float32), np.array(basis_y, dtype=np.float32)
 
 def fixed_division(to_div, epsilon):
     if epsilon == 0:
