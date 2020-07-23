@@ -632,6 +632,7 @@ def curvature_of_vs(mesh):
         total_weight_v = total_weight[v_id]
         second_ff_vertices[v_id] = 1./total_weight_v * second_ff_vertices[v_id]
         eigenvalues, _ = np.linalg.eig(second_ff_vertices[v_id])
+        eigenvalues = sorted(eigenvalues, key=abs)
         curvatures_i = [eigenvalues[0], eigenvalues[1], eigenvalues[0] * eigenvalues[1],
                              (eigenvalues[0] + eigenvalues[1]) / 2.]
         curvatures.append(curvatures_i)
