@@ -68,9 +68,8 @@ def from_scratch(file, opt):
     mesh_data.vs, faces = fill_from_file(mesh_data, file)
     mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
     faces, areas = remove_non_manifolds(mesh_data, faces)
-    """if opt.num_aug > 1:
+    if opt.num_aug > 1:
         faces = augmentation(mesh_data, opt, faces)
-    """
     _, edge_faces, edges_dict = get_edge_faces(faces)
     build_gemm(mesh_data, faces, areas, edge_faces)
     if opt.num_aug > 1:
@@ -184,6 +183,7 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     mesh.edge_faces = np.array(edge_faces, dtype=np.int32)
     mesh.faces_edges = np.array(faces_edges, dtype=np.int32)
     mesh.areas = np.array(face_areas, dtype=np.float32) / np.sum(face_areas)
+    export_obj(mesh, file="./datasets/test_curvature/%s.obj" % (mesh.filename))
 
 def compute_face_normals_and_areas(mesh, faces):
     face_normals = np.cross(mesh.vs[faces[:, 1]] - mesh.vs[faces[:, 0]],
@@ -200,7 +200,7 @@ def augmentation(mesh, opt, faces=None):
     if hasattr(opt, 'scale_verts') and opt.scale_verts:
         scale_verts(mesh)
     if hasattr(opt, 'flip_edges') and opt.flip_edges:
-        faces = flip_edges(mesh, opt.flip_edges, faces)
+        faces = flip_edges(mesh, opt.flip_edges, faces, opt.dataset_mode, opt.dataroot)
     return faces
 
 
@@ -245,7 +245,7 @@ def slide_verts(mesh, prct):
     mesh.shifted = shifted / len(mesh.ve)
 '''    print(mesh.filename)
     print(shifted)
-    export_obj(mesh, file="./datasets/test_curvature/%s.obj" % (mesh.filename))
+    export_obj(mesh, file="./datasets/test_curvature/%s.obj" % (mesh.filename))'''
 
 def export_obj(mesh, file=None, vcolor=None):
 
@@ -265,7 +265,7 @@ def export_obj(mesh, file=None, vcolor=None):
             v2 = np.size(mesh.v_mask[0:mesh.faces[-1][1]]) - np.sum(mesh.v_mask[0:mesh.faces[-1][1]])
             v3 = np.size(mesh.v_mask[0:mesh.faces[-1][2]]) - np.sum(mesh.v_mask[0:mesh.faces[-1][2]])
             f.write("f %d %d %d" % (mesh.faces[-1][0] - v1 + 1, mesh.faces[-1][1] - v2 + 1, mesh.faces[-1][2] - v3 + 1))
-'''
+
 
 def scale_verts(mesh, mean=1, var=0.1):
     for i in range(mesh.vs.shape[1]):
@@ -284,8 +284,11 @@ def angles_from_faces(mesh, edge_faces, faces):
     angles = np.pi - np.arccos(dot)
     return angles
 
+def read_seg(seg):
+    seg_labels = np.loadtxt(open(seg, 'r'), dtype='float64')
+    return seg_labels
 
-def flip_edges(mesh, prct, faces):
+def flip_edges(mesh, prct, faces, mode, dataroot):
     edge_count, edge_faces, edges_dict = get_edge_faces(faces)
     dihedral = angles_from_faces(mesh, edge_faces[:, 2:], faces)
     edges2flip = np.random.permutation(edge_count)
@@ -293,13 +296,21 @@ def flip_edges(mesh, prct, faces):
     # print(dihedral.max())
     target = int(prct * edge_count)
     flipped = 0
+    if mode == 'segmentation':
+        seg_file = os.path.join(dataroot, 'seg/' + os.path.splitext(mesh.filename)[0] + '.eseg')
+        assert (os.path.isfile(seg_file))
+        seg_labels = read_seg(seg_file)
     for edge_key in edges2flip:
         if flipped == target:
             break
-        if dihedral[edge_key] > 2.7:
+        if dihedral[edge_key] > 2.8:
             edge_info = edge_faces[edge_key]
             if edge_info[3] == -1:
                 continue
+            if mode == 'segmentation':
+                two_faces = edge_faces[edge_key, 2:4]
+                if seg_labels[two_faces[0]] != seg_labels[two_faces[1]]:
+                    continue
             new_edge = tuple(sorted(list(set(faces[edge_info[2]]) ^ set(faces[edge_info[3]]))))
             if new_edge in edges_dict:
                 continue
@@ -322,7 +333,7 @@ def flip_edges(mesh, prct, faces):
                                 if face_nb == edge_info[2 + (i + 1) % 2]:
                                     edge_faces[cur_edge_key, 2 + idx] = face_id
                 flipped += 1
-    '''#print(flipped)'''
+    '''print(flipped)'''
     return faces
 
 
