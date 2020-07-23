@@ -94,11 +94,12 @@ class Mesh:
                 v1 = np.size(self.v_mask[0:self.faces[face_id][0]]) - np.sum(self.v_mask[0:self.faces[face_id][0]])
                 v2 = np.size(self.v_mask[0:self.faces[face_id][1]]) - np.sum(self.v_mask[0:self.faces[face_id][1]])
                 v3 = np.size(self.v_mask[0:self.faces[face_id][2]]) - np.sum(self.v_mask[0:self.faces[face_id][2]])
-                f.write("f %d %d %d\n" % (self.faces[face_id][0] - v1 , self.faces[face_id][1] -v2 , self.faces[face_id][2] - v3))
+                f.write("f %d %d %d\n" % (self.faces[face_id][0] - v1, self.faces[face_id][1] - v2,
+                                          self.faces[face_id][2] - v3))
             v1 = np.size(self.v_mask[0:self.faces[-1][0]]) - np.sum(self.v_mask[0:self.faces[-1][0]])
             v2 = np.size(self.v_mask[0:self.faces[-1][1]]) - np.sum(self.v_mask[0:self.faces[-1][1]])
             v3 = np.size(self.v_mask[0:self.faces[-1][2]]) - np.sum(self.v_mask[0:self.faces[-1][2]])
-            f.write("f %d %d %d" % (self.faces[-1][0] -v1 , self.faces[-1][1]-v2 , self.faces[-1][2]-v3 ))
+            f.write("f %d %d %d" % (self.faces[-1][0] -v1, self.faces[-1][1]-v2, self.faces[-1][2]-v3))
 
 
     def export_segments(self, segments):

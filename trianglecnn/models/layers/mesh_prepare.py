@@ -73,10 +73,9 @@ def from_scratch(file, opt):
     """
     _, edge_faces, edges_dict = get_edge_faces(faces)
     build_gemm(mesh_data, faces, areas, edge_faces)
-    '''if opt.num_aug > 1:
-        post_augmentation(mesh_data, opt)'''
+    if opt.num_aug > 1:
+        post_augmentation(mesh_data, opt)
     set_edge_lengths(mesh_data)
-    curvature_of_vs(mesh_data)
     mesh_data.features = extract_features(mesh_data)
     return mesh_data
 
@@ -205,7 +204,6 @@ def augmentation(mesh, opt, faces=None):
     return faces
 
 
-'''
 def post_augmentation(mesh, opt):
     if hasattr(opt, 'slide_verts') and opt.slide_verts:
         slide_verts(mesh, opt.slide_verts)
@@ -213,47 +211,61 @@ def post_augmentation(mesh, opt):
 
 def slide_verts(mesh, prct):
     set_edge_lengths(mesh)
-    curvatures = curvature_of_vs(mesh)
-    curvatures_main1 = curvatures[:, 0]
-    curvatures_main2 = curvatures[:, 1]
+    curvatures, min_curvature_vectors = curvature_of_vs(mesh)
+    curvatures_min = curvatures[:, 0]
+    curvatures_max = curvatures[:, 1]
     vids = np.random.permutation(len(mesh.ve))
     target = int(prct * len(vids))
     shifted = 0
     for vi in vids:
         if shifted < target:
-            main1 = curvatures_main1[vi]
-            main2 = curvatures_main2[vi]
+            main1 = curvatures_min[vi]
+            main2 = curvatures_max[vi]
             edges = mesh.ve[vi]
-            if main1 < 1. and main2 < 1. :
+            if main1 < 0.01 and main2 < 0.01:
                 edge = mesh.edges[np.random.choice(edges)]
                 vi_t = edge[1] if vi == edge[0] else edge[0]
                 nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
                 mesh.vs[vi] = nv
                 shifted += 1
-            elif min(main1,main2) < 1.:
-                if min(main1,main2) == main1:
-                    vi_ts = []
-                    for edge in mesh.edges[edges]:
-                        vi_t = edge[1] if vi == edge[0] else edge[0]
-                        vi_ts.append(vi_t)
-                    vi_t = vi_ts[np.argmax(curvatures_main1[vi_ts])]
-                    nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
-                    mesh.vs[vi] = nv
-                    shifted += 1
-                else:
-                    vi_ts = []
-                    for edge in mesh.edges[edges]:
-                        vi_t = edge[1] if vi == edge[0] else edge[0]
-                        vi_ts.append(vi_t)
-                    vi_t = vi_ts[np.argmax(curvatures_main2[vi_ts])]
-                    nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
-                    mesh.vs[vi] = nv
-                    shifted += 1
+            elif main1 < 0.01:
+                vi_ts = []
+                norms = []
+                for edge in mesh.edges[edges]:
+                    vi_t = edge[1] if vi == edge[0] else edge[0]
+                    vector = min_curvature_vectors[vi, :]
+                    norms.append(np.linalg.norm(np.cross(mesh.vs[vi_t] - mesh.vs[vi], vector)))
+                    vi_ts.append(vi_t)
+                vi_t = vi_ts[np.argmin(norms)]
+                nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5)  * (mesh.vs[vi_t] - mesh.vs[vi])
+                mesh.vs[vi] = nv
+                shifted += 1
         else:
             break
     mesh.shifted = shifted / len(mesh.ve)
-    #print(mesh.filename)
-    #print(shifted)'''
+'''    print(mesh.filename)
+    print(shifted)
+    export_obj(mesh, file="./datasets/test_curvature/%s.obj" % (mesh.filename))
+
+def export_obj(mesh, file=None, vcolor=None):
+
+        vs = mesh.vs[mesh.v_mask]
+
+        with open(file, 'w+') as f:
+            for vi, v in enumerate(vs):
+                vcol = ' %f %f %f' % (vcolor[vi, 0], vcolor[vi, 1], vcolor[vi, 2]) if vcolor is not None else ''
+                f.write("v %f %f %f%s\n" % (v[0], v[1], v[2], vcol))
+            for face_id in range(len(mesh.faces) - 1):
+                v1 = np.size(mesh.v_mask[0:mesh.faces[face_id][0]]) - np.sum(mesh.v_mask[0:mesh.faces[face_id][0]])
+                v2 = np.size(mesh.v_mask[0:mesh.faces[face_id][1]]) - np.sum(mesh.v_mask[0:mesh.faces[face_id][1]])
+                v3 = np.size(mesh.v_mask[0:mesh.faces[face_id][2]]) - np.sum(mesh.v_mask[0:mesh.faces[face_id][2]])
+                f.write("f %d %d %d\n" % (
+                    mesh.faces[face_id][0] - v1 + 1, mesh.faces[face_id][1] - v2 + 1, mesh.faces[face_id][2] - v3 + 1))
+            v1 = np.size(mesh.v_mask[0:mesh.faces[-1][0]]) - np.sum(mesh.v_mask[0:mesh.faces[-1][0]])
+            v2 = np.size(mesh.v_mask[0:mesh.faces[-1][1]]) - np.sum(mesh.v_mask[0:mesh.faces[-1][1]])
+            v3 = np.size(mesh.v_mask[0:mesh.faces[-1][2]]) - np.sum(mesh.v_mask[0:mesh.faces[-1][2]])
+            f.write("f %d %d %d" % (mesh.faces[-1][0] - v1 + 1, mesh.faces[-1][1] - v2 + 1, mesh.faces[-1][2] - v3 + 1))
+'''
 
 def scale_verts(mesh, mean=1, var=0.1):
     for i in range(mesh.vs.shape[1]):
@@ -518,12 +530,12 @@ def get_area_ratios(mesh, index):
 def curvature(mesh):
     """
     """
-    curvatures_main1 =[]
+    curvatures_main1 = []
     curvatures_main2 = []
     curvatures_gauss = []
     curvatures_mean = []
 
-    curvatures = curvature_of_vs(mesh)
+    curvatures, _ = curvature_of_vs(mesh)
     for i in range(3):
         curvature_i = get_curvature(mesh, i, curvatures)
         curvatures_main1.append(curvature_i[:, 0])
@@ -542,9 +554,8 @@ def get_curvature(mesh, index, curvatures):
     curvatures_i = curvatures[vertices_ids, :]
     return np.array(curvatures_i)
 
+
 '''
-
-
 def curvature_of_vs(mesh):
     curvatures = []
     for vertex_id, edge_one_ring in enumerate(mesh.ve):
@@ -578,8 +589,6 @@ def get_normals_by_edge(mesh, edge_ids):
     normals, _ = get_normals(mesh, 0)
     return normals[face_ids[:, 2]], normals[face_ids[:, 3]]
 '''
-
-
 def curvature_of_vs(mesh):
     normals_triangles, _ = get_normals(mesh, 0)
     v1s, v2s = complete_orthogonal_basis(normals_triangles)
@@ -628,15 +637,24 @@ def curvature_of_vs(mesh):
                 second_ff_vertices[face[i]] += weights[face_id, i] * local_transfo
             total_weight[face[i]] += weights[face_id, i]
     curvatures = []
+    min_curvature_vectors = []
     for v_id, vertex in enumerate(mesh.vs):
         total_weight_v = total_weight[v_id]
         second_ff_vertices[v_id] = 1./total_weight_v * second_ff_vertices[v_id]
-        eigenvalues, _ = np.linalg.eig(second_ff_vertices[v_id])
+        eigenvalues, eigenvectors = np.linalg.eig(second_ff_vertices[v_id])
+        if np.min(eigenvalues) == eigenvalues[0]:
+            min_curvature_vector = np.array([eigenvectors[0, 0], eigenvectors[0, 1], 0.], dtype=float)
+        else:
+            min_curvature_vector = np.array([eigenvectors[1, 0], eigenvectors[1, 1], 0.], dtype=float)
+        n_e = np.array([0., 0., 1.])
+        mat_rotation = rotate_frame(n_e, n_v)
+        min_curvature_vectors.append(np.dot(mat_rotation, min_curvature_vector))
         eigenvalues = sorted(eigenvalues, key=abs)
         curvatures_i = [eigenvalues[0], eigenvalues[1], eigenvalues[0] * eigenvalues[1],
-                             (eigenvalues[0] + eigenvalues[1]) / 2.]
+                        (eigenvalues[0] + eigenvalues[1]) / 2.]
         curvatures.append(curvatures_i)
-    return np.array(curvatures, dtype=float)
+    curvatures = np.array(curvatures, dtype=float)
+    return np.array(curvatures, dtype=float), np.array(min_curvature_vectors, dtype=float)
 
 def get_weight_by_triangle(mesh):
     weights = []
@@ -729,7 +747,7 @@ def complete_orthogonal_basis(normals):
             if np.linalg.norm(new_y)**2 < TOLERENCE:
                 new_x = np.array([0., 0., 1.])
                 new_y = np.cross(new_z, new_x)
-        div = fixed_division(np.linalg.norm(new_y, ord=2 ), epsilon=1.e-6)
+        div = fixed_division(np.linalg.norm(new_y, ord=2), epsilon=1.e-6)
         new_y /= div
         new_x = np.cross(new_y, new_z)
         div = fixed_division(np.linalg.norm(new_x, ord=2), epsilon=1.e-6)
