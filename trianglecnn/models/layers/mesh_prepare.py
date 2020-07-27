@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import ntpath
-
+import heapq
 TOLERENCE = 1.e-6
 
 def fill_mesh(mesh2fill, file: str, opt):
@@ -10,7 +10,8 @@ def fill_mesh(mesh2fill, file: str, opt):
         mesh_data = np.load(load_path, encoding='latin1', allow_pickle=True)
     else:
         mesh_data = from_scratch(file, opt)
-        np.savez_compressed(load_path, gemm_edges=mesh_data.gemm_edges, gemm_faces =mesh_data.gemm_faces, vs=mesh_data.vs, edges=mesh_data.edges,faces = mesh_data.faces,
+        ''' gemm_edges=mesh_data.gemm_edges,'''
+        np.savez_compressed(load_path, gemm_faces =mesh_data.gemm_faces, vs=mesh_data.vs, edges=mesh_data.edges,faces = mesh_data.faces,
                             edges_count=mesh_data.edges_count, faces_count=mesh_data.faces_count, ve=mesh_data.ve, vf=mesh_data.vf, v_mask=mesh_data.v_mask, faces_edges =mesh_data.faces_edges, edge_faces= mesh_data.edge_faces,
                             filename=mesh_data.filename,
                             edge_lengths=mesh_data.edge_lengths, areas=mesh_data.areas,
@@ -18,7 +19,7 @@ def fill_mesh(mesh2fill, file: str, opt):
     mesh2fill.vs = mesh_data['vs']
     mesh2fill.edges = mesh_data['edges']
     mesh2fill.faces = mesh_data['faces']
-    mesh2fill.gemm_edges = mesh_data['gemm_edges']
+    '''mesh2fill.gemm_edges = mesh_data['gemm_edges']'''
     mesh2fill.gemm_faces = mesh_data['gemm_faces']
 
     mesh2fill.edges_count = int(mesh_data['edges_count'])
@@ -52,7 +53,7 @@ def from_scratch(file, opt):
     mesh_data = MeshPrep()
     mesh_data.vs = mesh_data.edges = mesh_data.faces = None
     mesh_data.gemm_faces = None
-    mesh_data.gemm_edges = None
+    ''' mesh_data.gemm_edges = None'''
     mesh_data.edges_count = None
     mesh_data.faces_count = None
     mesh_data.ve = None
@@ -66,10 +67,11 @@ def from_scratch(file, opt):
     mesh_data.faces_edges = None
 
     mesh_data.vs, faces = fill_from_file(mesh_data, file)
-    mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
+
     faces, areas = remove_non_manifolds(mesh_data, faces)
     if opt.num_aug > 1:
-        faces = augmentation(mesh_data, opt, faces)
+        faces, areas = augmentation(mesh_data, opt, faces, areas)
+    mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
     _, edge_faces, edges_dict = get_edge_faces(faces)
     build_gemm(mesh_data, faces, areas, edge_faces)
     if opt.num_aug > 1:
@@ -136,7 +138,7 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     mesh.ve = [[] for _ in mesh.vs]
     mesh.vf = [[] for _ in mesh.vs]
     face_nb = []
-    edge_nb = []
+    '''edge_nb = []'''
     edge2key = dict()
     edges = []
     edges_count = 0
@@ -157,7 +159,7 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
             if edge not in edge2key:
                 edge2key[edge] = edges_count
                 edges.append(list(edge))
-                edge_nb.append([-1, -1, -1, -1])
+                '''edge_nb.append([-1, -1, -1, -1])'''
                 mesh.ve[edge[0]].append(edges_count)
                 mesh.ve[edge[1]].append(edges_count)
                 nb_count.append(0)
@@ -168,22 +170,23 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
             face_eid.append(edge_key)
             face_nb[face_id][idx] = edge_faces[edge_key][3 if edge_faces[edge_key][2] == face_id else 2]
         faces_edges.append(face_eid)
-        for idx, edge in enumerate(face_edges):
+        '''for idx, edge in enumerate(face_edges):
             edge_key = edge2key[edge]
             edge_nb[edge_key][nb_count[edge_key]] = edge2key[face_edges[(idx + 1) % 3]]
             edge_nb[edge_key][nb_count[edge_key] + 1] = edge2key[face_edges[(idx + 2) % 3]]
-            nb_count[edge_key] += 2
+            nb_count[edge_key] += 2'''
 
     mesh.edges = np.array(edges, dtype=np.int32)
     mesh.gemm_faces = np.array(face_nb, dtype=np.int64)
-    mesh.gemm_edges = np.array(edge_nb, dtype=np.int64)
+    '''mesh.gemm_edges = np.array(edge_nb, dtype=np.int64)'''
     mesh.edges_count = edges_count
     mesh.faces_count = faces_count
     mesh.faces = np.array(faces, dtype=np.int32)
     mesh.edge_faces = np.array(edge_faces, dtype=np.int32)
     mesh.faces_edges = np.array(faces_edges, dtype=np.int32)
     mesh.areas = np.array(face_areas, dtype=np.float32) / np.sum(face_areas)
-    '''export_obj(mesh, file="./datasets/test_curvature/%s.obj" % (mesh.filename))'''
+    '''export_obj(mesh, file="./datasets/test_curvature/%s" % (mesh.filename))'''
+
 
 def compute_face_normals_and_areas(mesh, faces):
     face_normals = np.cross(mesh.vs[faces[:, 1]] - mesh.vs[faces[:, 0]],
@@ -196,17 +199,47 @@ def compute_face_normals_and_areas(mesh, faces):
 
 
 # Data augmentation methods
-def augmentation(mesh, opt, faces=None):
+def augmentation(mesh, opt, faces=None, areas = None):
     if hasattr(opt, 'scale_verts') and opt.scale_verts:
         scale_verts(mesh)
+    if hasattr(opt, 'aug_triangulation') and opt.aug_triangulation:
+        faces, areas = aug_triangulation(mesh, opt.aug_triangulation, faces, areas)
     if hasattr(opt, 'flip_edges') and opt.flip_edges:
         faces = flip_edges(mesh, opt.flip_edges, faces, opt.dataset_mode, opt.dataroot)
-    return faces
+    return faces, areas
 
 
 def post_augmentation(mesh, opt):
     if hasattr(opt, 'slide_verts') and opt.slide_verts:
         slide_verts(mesh, opt.slide_verts)
+
+def aug_triangulation(mesh, num, faces, areas):
+    count = 0
+    while count < num:
+
+        tt = np.concatenate((areas.reshape(len(areas), 1),
+                             np.arange(len(areas)).reshape(len(areas), 1)), axis=1).tolist()
+        heapq._heapify_max(tt)
+        while len(tt) > 0:
+            if count >= num:
+                break
+            area, id = heapq._heappop_max(tt)
+            id = int(id)
+            print(area)
+            new_point = np.mean(mesh.vs[faces[id]], axis=0).reshape(1, 3)
+            mesh.vs = np.concatenate((mesh.vs, new_point), axis=0)
+            v_id = len(mesh.vs) - 1
+            v_2 = faces[id, 2]
+            faces[id] = [faces[id, 0], faces[id, 1], v_id]
+            new_faces = []
+            new_faces.append([faces[id, 1], v_2, faces[id, 2]])
+            new_faces.append([faces[id, 2], v_2, faces[id, 0]])
+            faces =np.concatenate((faces, np.array(new_faces, dtype= int)), axis =0)
+            areas[id] = area / 3
+            new_areas = [area, area]
+            areas = np.concatenate((areas, np.array(new_areas, dtype=int)), axis=0)
+            count += 2
+    return faces, areas
 
 
 def slide_verts(mesh, prct):
@@ -454,7 +487,7 @@ def area_ratios(mesh):
         ratios.append(ratios_i)
     ratios = np.array(ratios)
     return np.sort(ratios, axis=0)
-
+'''
 def get_edge_points(mesh):
     edge_points = np.zeros([mesh.edges_count, 4], dtype=np.int32)
     for edge_id, edge in enumerate(mesh.edges):
@@ -491,7 +524,7 @@ def get_side_points(mesh, edge_id):
     if edge_d[1] in edge_e:
         third_vertex = 1
     return [edge_a[first_vertex], edge_a[1 - first_vertex], edge_b[second_vertex], edge_d[third_vertex]]
-
+'''
 
 def get_normals(mesh,  index):
     face_neighbor_id = mesh.gemm_faces[:, index]
@@ -652,7 +685,6 @@ def curvature_of_vs(mesh):
     for v_id, vertex in enumerate(mesh.vs):
         total_weight_v = total_weight[v_id]
         if total_weight_v == 0.:
-            print("%s do not has this sommet %d" %(mesh.filename, v_id))
             total_weight_v = 1.
         second_ff_vertices[v_id] = 1./total_weight_v * second_ff_vertices[v_id]
         eigenvalues, eigenvectors = np.linalg.eig(second_ff_vertices[v_id])
