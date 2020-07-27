@@ -126,7 +126,7 @@ def remove_non_manifolds(mesh, faces):
         else:
             for idx, edge in enumerate(face_edges):
                 edges_set.add(edge)
-    return faces[mask], face_areas[mask]
+    return faces[:], face_areas[:]
 
 
 def build_gemm(mesh, faces, face_areas, edge_faces):
@@ -183,7 +183,7 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     mesh.edge_faces = np.array(edge_faces, dtype=np.int32)
     mesh.faces_edges = np.array(faces_edges, dtype=np.int32)
     mesh.areas = np.array(face_areas, dtype=np.float32) / np.sum(face_areas)
-    export_obj(mesh, file="./datasets/test_curvature/%s.obj" % (mesh.filename))
+    '''export_obj(mesh, file="./datasets/test_curvature/%s.obj" % (mesh.filename))'''
 
 def compute_face_normals_and_areas(mesh, faces):
     face_normals = np.cross(mesh.vs[faces[:, 1]] - mesh.vs[faces[:, 0]],
@@ -651,6 +651,9 @@ def curvature_of_vs(mesh):
     min_curvature_vectors = []
     for v_id, vertex in enumerate(mesh.vs):
         total_weight_v = total_weight[v_id]
+        if total_weight_v == 0.:
+            print("%s do not has this sommet %d" %(mesh.filename, v_id))
+            total_weight_v = 1.
         second_ff_vertices[v_id] = 1./total_weight_v * second_ff_vertices[v_id]
         eigenvalues, eigenvectors = np.linalg.eig(second_ff_vertices[v_id])
         if np.min(eigenvalues) == eigenvalues[0]:
