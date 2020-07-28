@@ -185,7 +185,7 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     mesh.edge_faces = np.array(edge_faces, dtype=np.int32)
     mesh.faces_edges = np.array(faces_edges, dtype=np.int32)
     mesh.areas = np.array(face_areas, dtype=np.float32) / np.sum(face_areas)
-    export_obj(mesh, file="./datasets/test_curvature/%s" % (mesh.filename))
+    '''export_obj(mesh, file="./datasets/test_curvature/%s" % (mesh.filename))'''
 
 
 
@@ -435,7 +435,7 @@ def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug = None):
                                 if face_nb == edge_info[2 + (i + 1) % 2]:
                                     edge_faces[cur_edge_key, 2 + idx] = face_id
                 flipped += 1
-    print(flipped)
+    '''print(flipped)'''
     return faces, areas
 
 
