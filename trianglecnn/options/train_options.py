@@ -23,6 +23,7 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--scale_verts', action='store_true', help='non-uniformly scale the mesh e.g., in x, y or z')
         self.parser.add_argument('--slide_verts', type=float, default=0, help='percent vertices which will be shifted along the mesh surface')
         self.parser.add_argument('--flip_edges', type=float, default=0, help='percent of edges to randomly flip')
+        self.parser.add_argument('--aug_triangulation', type=int, default=0, help='number of triangles augmentation')
         # tensorboard visualization
         self.parser.add_argument('--no_vis', action='store_true', help='will not use tensorboard')
         self.parser.add_argument('--verbose_plot', action='store_true', help='plots network weights, etc.')
