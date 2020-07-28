@@ -185,7 +185,7 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     mesh.edge_faces = np.array(edge_faces, dtype=np.int32)
     mesh.faces_edges = np.array(faces_edges, dtype=np.int32)
     mesh.areas = np.array(face_areas, dtype=np.float32) / np.sum(face_areas)
-    '''export_obj(mesh, file="./datasets/test_curvature/%s" % (mesh.filename))'''
+    export_obj(mesh, file="./datasets/test_curvature/%s" % (mesh.filename))
 
 
 
@@ -203,10 +203,11 @@ def compute_face_normals_and_areas(mesh, faces):
 def augmentation(mesh, opt, faces=None, areas = None):
     if hasattr(opt, 'scale_verts') and opt.scale_verts:
         scale_verts(mesh)
-    if hasattr(opt, 'aug_triangulation') and opt.aug_triangulation:
-        faces, areas = aug_triangulation(mesh, opt.aug_triangulation, faces, areas)
     if hasattr(opt, 'flip_edges') and opt.flip_edges:
-        faces = flip_edges(mesh, opt.flip_edges, faces, opt.dataset_mode, opt.dataroot)
+        faces, areas = flip_edges(mesh, opt.flip_edges, faces, areas, opt.dataset_mode, opt.dataroot, opt.aug_triangulation)
+    if hasattr(opt, 'aug_triangulation') and opt.aug_triangulation:
+        faces, areas = aug_triangulation(mesh, opt.aug_triangulation, faces, areas, opt.dataroot)
+
     return faces, areas
 
 
@@ -214,8 +215,13 @@ def post_augmentation(mesh, opt):
     if hasattr(opt, 'slide_verts') and opt.slide_verts:
         slide_verts(mesh, opt.slide_verts)
 
-def aug_triangulation(mesh, num, faces, areas):
+def aug_triangulation(mesh, num, faces, areas, dataroot):
     count = 0
+    seg_file = os.path.join(dataroot, 'seg/' + os.path.splitext(mesh.filename)[0] + '.eseg')
+    sseg_file = os.path.join(dataroot, 'sseg/' + os.path.splitext(mesh.filename)[0] + '.seseg')
+    assert (os.path.isfile(seg_file))
+    seg_labels = read_seg(seg_file)
+    sseg_labels = read_sseg(sseg_file)
     while count < num:
 
         tt = np.concatenate((areas.reshape(len(areas), 1),
@@ -226,7 +232,6 @@ def aug_triangulation(mesh, num, faces, areas):
                 break
             area, id = heapq._heappop_max(tt)
             id = int(id)
-            print(area)
             new_point = np.mean(mesh.vs[faces[id]], axis=0).reshape(1, 3)
             mesh.vs = np.concatenate((mesh.vs, new_point), axis=0)
             v_id = len(mesh.vs) - 1
@@ -239,7 +244,13 @@ def aug_triangulation(mesh, num, faces, areas):
             areas[id] = area / 3
             new_areas = [area, area]
             areas = np.concatenate((areas, np.array(new_areas, dtype=int)), axis=0)
+            seg_labels = np.append(seg_labels, seg_labels[id])
+            seg_labels = np.append(seg_labels, seg_labels[id])
+            sseg_labels = np.append(sseg_labels, sseg_labels[id].reshape(1, sseg_labels.shape[1]), axis=0)
+            sseg_labels = np.append(sseg_labels, sseg_labels[id].reshape(1, sseg_labels.shape[1]), axis=0)
             count += 2
+    write_seg(seg_labels, seg_file);
+    write_sseg(sseg_labels, sseg_file);
     return faces, areas
 
 
@@ -322,7 +333,38 @@ def read_seg(seg):
     seg_labels = np.loadtxt(open(seg, 'r'), dtype='float64')
     return seg_labels
 
-def flip_edges(mesh, prct, faces, mode, dataroot):
+
+def read_sseg(sseg_file):
+    sseg_labels = read_seg(sseg_file)
+    sseg_labels = np.array(sseg_labels > 0, dtype='float64')
+    return sseg_labels
+
+
+def write_seg(labels, seg):
+    dir_name = os.path.join(os.path.dirname(seg), 'cache')
+    prefix = os.path.basename(seg)
+    write_file = os.path.join(dir_name, prefix)
+    if not os.path.isdir(dir_name):
+        os.mkdir(dir_name)
+    if os.path.isfile(write_file):
+        return
+    np.savetxt(write_file, labels, delimiter='\n', fmt='%.1e')
+
+
+
+def write_sseg(labels, sseg_file):
+    sum = np.sum(labels, axis=1).reshape(labels.shape[0], 1).repeat(labels.shape[1], axis= 1)*2
+    dir_name = os.path.join(os.path.dirname(sseg_file), 'cache')
+    prefix = os.path.basename(sseg_file)
+    write_file = os.path.join(dir_name, prefix)
+    if not os.path.isdir(dir_name):
+        os.mkdir(dir_name)
+    if os.path.isfile(write_file):
+        return
+    np.savetxt(write_file, labels/sum, delimiter=' ', newline='\n', fmt='%.2e')
+
+
+def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug = None):
     edge_count, edge_faces, edges_dict = get_edge_faces(faces)
     dihedral = angles_from_faces(mesh, edge_faces[:, 2:], faces)
     edges2flip = np.random.permutation(edge_count)
@@ -331,7 +373,10 @@ def flip_edges(mesh, prct, faces, mode, dataroot):
     target = int(prct * edge_count)
     flipped = 0
     if mode == 'segmentation':
-        seg_file = os.path.join(dataroot, 'seg/' + os.path.splitext(mesh.filename)[0] + '.eseg')
+        if aug:
+            seg_file = os.path.join(dataroot, 'seg/cache/' + os.path.splitext(mesh.filename)[0] + '.eseg')
+        else:
+            seg_file = os.path.join(dataroot, 'seg/' + os.path.splitext(mesh.filename)[0] + '.eseg')
         assert (os.path.isfile(seg_file))
         seg_labels = read_seg(seg_file)
     for edge_key in edges2flip:
@@ -356,6 +401,8 @@ def flip_edges(mesh, prct, faces, mode, dataroot):
                 edges_dict[new_edge] = edge_key
                 rebuild_face(faces[edge_info[2]], new_faces[0])
                 rebuild_face(faces[edge_info[3]], new_faces[1])
+                area = areas[edge_info[2]] + areas[edge_info[3]] / 2.
+                areas[edge_info[2]] = areas[edge_info[3]] = area
                 for i, face_id in enumerate([edge_info[2], edge_info[3]]):
                     cur_face = faces[face_id]
                     for j in range(3):
@@ -367,8 +414,8 @@ def flip_edges(mesh, prct, faces, mode, dataroot):
                                 if face_nb == edge_info[2 + (i + 1) % 2]:
                                     edge_faces[cur_edge_key, 2 + idx] = face_id
                 flipped += 1
-    '''print(flipped)'''
-    return faces
+    print(flipped)
+    return faces, areas
 
 
 def rebuild_face(face, new_face):
