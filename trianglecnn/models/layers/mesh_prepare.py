@@ -185,7 +185,7 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     mesh.edge_faces = np.array(edge_faces, dtype=np.int32)
     mesh.faces_edges = np.array(faces_edges, dtype=np.int32)
     mesh.areas = np.array(face_areas, dtype=np.float32) / np.sum(face_areas)
-    export_obj(mesh, file="./datasets/test_curvature/%s" % (mesh.filename))
+    '''export_obj(mesh, file="./datasets/test_curvature/%s" % (mesh.filename))'''
 
 
 
