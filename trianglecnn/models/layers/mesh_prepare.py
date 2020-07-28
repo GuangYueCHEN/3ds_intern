@@ -185,7 +185,7 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     mesh.edge_faces = np.array(edge_faces, dtype=np.int32)
     mesh.faces_edges = np.array(faces_edges, dtype=np.int32)
     mesh.areas = np.array(face_areas, dtype=np.float32) / np.sum(face_areas)
-    '''export_obj(mesh, file="./datasets/test_curvature/%s" % (mesh.filename))'''
+    export_obj(mesh, file="./datasets/test_curvature/%s" % (mesh.filename))
 
 
 
@@ -203,10 +203,11 @@ def compute_face_normals_and_areas(mesh, faces):
 def augmentation(mesh, opt, faces=None, areas = None):
     if hasattr(opt, 'scale_verts') and opt.scale_verts:
         scale_verts(mesh)
-    if hasattr(opt, 'flip_edges') and opt.flip_edges:
-        faces, areas = flip_edges(mesh, opt.flip_edges, faces, areas, opt.dataset_mode, opt.dataroot)
     if hasattr(opt, 'aug_triangulation') and opt.aug_triangulation:
         faces, areas = aug_triangulation(mesh, opt.aug_triangulation, faces, areas, opt.dataroot)
+    if hasattr(opt, 'flip_edges') and opt.flip_edges:
+        faces, areas = flip_edges(mesh, opt.flip_edges, faces, areas, opt.dataset_mode, opt.dataroot, opt.aug_triangulation)
+
 
     return faces, areas
 
@@ -351,7 +352,6 @@ def write_seg(labels, seg):
     np.savetxt(write_file, labels, delimiter='\n', fmt='%.1e')
 
 
-
 def write_sseg(labels, sseg_file):
     sum = np.sum(labels, axis=1).reshape(labels.shape[0], 1).repeat(labels.shape[1], axis= 1)*2
     dir_name = os.path.join(os.path.dirname(sseg_file), 'cache')
@@ -364,7 +364,26 @@ def write_sseg(labels, sseg_file):
     np.savetxt(write_file, labels/sum, delimiter=' ', newline='\n', fmt='%.2e')
 
 
-def flip_edges(mesh, prct, faces, areas, mode, dataroot):
+def get_max_angles(mesh, v1, v2, v3, v4):
+    edge_a = mesh.vs[v1] - mesh.vs[v2]
+    edge_b = mesh.vs[v3] - mesh.vs[v1]
+    edge_c = mesh.vs[v3] - mesh.vs[v2]
+    edge_d = mesh.vs[v4] - mesh.vs[v1]
+    edge_e = mesh.vs[v4] - mesh.vs[v2]
+    edge_a /= fixed_division(np.linalg.norm(edge_a, ord=2), epsilon=1.e-6)
+    edge_b /= fixed_division(np.linalg.norm(edge_b, ord=2), epsilon=1.e-6)
+    edge_c /= fixed_division(np.linalg.norm(edge_c, ord=2), epsilon=1.e-6)
+    edge_d /= fixed_division(np.linalg.norm(edge_d, ord=2), epsilon=1.e-6)
+    edge_e /= fixed_division(np.linalg.norm(edge_e, ord=2), epsilon=1.e-6)
+    angles = np.zeros(4)
+    angles[0] = np.arccos(np.sum(edge_a * edge_c))
+    angles[1] = np.arccos(np.sum(-edge_a * edge_b))
+    angles[2] = np.arccos(np.sum(edge_a * edge_e))
+    angles[3] = np.arccos(np.sum(-edge_a * edge_d))
+    return np.max(angles)
+
+
+def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug = None):
     edge_count, edge_faces, edges_dict = get_edge_faces(faces)
     dihedral = angles_from_faces(mesh, edge_faces[:, 2:], faces)
     edges2flip = np.random.permutation(edge_count)
@@ -373,7 +392,10 @@ def flip_edges(mesh, prct, faces, areas, mode, dataroot):
     target = int(prct * edge_count)
     flipped = 0
     if mode == 'segmentation':
-        seg_file = os.path.join(dataroot, 'seg/' + os.path.splitext(mesh.filename)[0] + '.eseg')
+        if aug:
+            seg_file = os.path.join(dataroot, 'seg/cache/' + os.path.splitext(mesh.filename)[0] + '.eseg')
+        else:
+            seg_file = os.path.join(dataroot, 'seg/' + os.path.splitext(mesh.filename)[0] + '.eseg')
         assert (os.path.isfile(seg_file))
         seg_labels = read_seg(seg_file)
     for edge_key in edges2flip:
@@ -388,6 +410,8 @@ def flip_edges(mesh, prct, faces, areas, mode, dataroot):
                 if seg_labels[two_faces[0]] != seg_labels[two_faces[1]]:
                     continue
             new_edge = tuple(sorted(list(set(faces[edge_info[2]]) ^ set(faces[edge_info[3]]))))
+            if get_max_angles(mesh, edge_info[0], edge_info[1], new_edge[0], new_edge[1]) > 1.55:
+                continue
             if new_edge in edges_dict:
                 continue
             new_faces = np.array(
@@ -411,7 +435,7 @@ def flip_edges(mesh, prct, faces, areas, mode, dataroot):
                                 if face_nb == edge_info[2 + (i + 1) % 2]:
                                     edge_faces[cur_edge_key, 2 + idx] = face_id
                 flipped += 1
-    '''print(flipped)'''
+    print(flipped)
     return faces, areas
 
 
