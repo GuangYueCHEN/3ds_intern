@@ -411,7 +411,6 @@ def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug = None):
                     continue
             new_edge = tuple(sorted(list(set(faces[edge_info[2]]) ^ set(faces[edge_info[3]]))))
             if aug and get_max_angles(mesh, edge_info[0], edge_info[1], new_edge[0], new_edge[1]) > 1.55:
-                print(111)
                 continue
             if new_edge in edges_dict:
                 continue
