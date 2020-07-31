@@ -99,13 +99,13 @@ def define_classifier(input_nc, ncf, ninput_faces, nclasses, opt, gpu_ids, arch,
 
     if arch == 'mconvnet':
         net = MeshConvNet(norm_layer, input_nc, ncf, nclasses, ninput_faces, opt.pool_res, opt.fc_n,
-                          opt.resblocks)
+                          opt.resblocks, PointSpatialTransformer(3))
     elif arch == 'meshunet':
         down_convs = [input_nc] + ncf
         up_convs = ncf[::-1] + [nclasses]
         pool_res = [ninput_faces] + opt.pool_res
         net = MeshEncoderDecoder(pool_res, down_convs, up_convs, blocks=opt.resblocks,
-                                 transfer_data=True)
+                                 transfer_data=True, stn = PointSpatialTransformer(3))
     else:
         raise NotImplementedError('Encoder model name [%s] is not recognized' % arch)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -117,15 +117,69 @@ def define_loss(opt):
         loss = torch.nn.CrossEntropyLoss(ignore_index=-1)
     return loss
 
+
+
 ##############################################################################
 # Classes For Classification / Segmentation Networks
 ##############################################################################
+def _init_identity(module, dim):
+    if type(module) == nn.Linear:
+        nn.init.constant_(module.weight, 0.0)
+        with torch.no_grad():
+            module.bias.data = torch.eye(dim).view(-1)
+
+
+class PointSpatialTransformer(nn.Module):
+    """
+    Spatial Transformer Network for point clouds
+
+    Reference:
+    ----------
+    PointNet: Deep Learning on Point Sets for 3D Classification and Segmentation
+    Charles R. Qi, Hao Su, Kaichun Mo, Leonidas J. Guibas
+    arXiv:1612.00593v2 [cs.CV]
+    (Supplementary Section C)
+    """
+
+    def __init__(self, dim=3):
+        super(PointSpatialTransformer, self).__init__()
+        self.dim = dim
+        self.features = nn.Sequential(nn.Conv1d(dim, 64, kernel_size=1),
+                                      nn.BatchNorm1d(64),
+                                      nn.ReLU(True),
+                                      nn.Conv1d(64, 128, kernel_size=1),
+                                      nn.BatchNorm1d(128),
+                                      nn.ReLU(True),
+                                      nn.Conv1d(128, 1024, kernel_size=1),
+                                      nn.BatchNorm1d(1024),
+                                      nn.ReLU(True))
+
+        self.regressor = nn.Sequential(nn.Linear(1024, 512),
+                                       nn.BatchNorm1d(512),
+                                       nn.ReLU(True),
+                                       nn.Linear(512, 256))
+
+        self.transform = nn.Linear(256, dim * dim)
+
+        # Initialize initial transformation to be identity
+        _init_identity(self.transform, dim)
+
+    def forward(self, x):
+        x = self.features(x)
+        x = torch.max(x, dim=2, keepdim=True)[0]
+        x = x.view(x.size(0), -1)
+        x = self.regressor(x)
+        x = self.transform(x)
+        # resize x into 2D square matrix
+        x = x.view(x.size(0), self.dim, self.dim)
+        return x
+
 
 class MeshConvNet(nn.Module):
     """Network for learning a global shape descriptor (classification)
     """
     def __init__(self, norm_layer, nf0, conv_res, nclasses, input_res, pool_res, fc_n,
-                 nresblocks=3):
+                 nresblocks=3, stn = None):
         super(MeshConvNet, self).__init__()
         self.k = [nf0] + conv_res
         self.res = [input_res] + pool_res
@@ -141,7 +195,7 @@ class MeshConvNet(nn.Module):
         # self.gp = torch.nn.MaxPool1d(self.res[-1])
         self.fc1 = nn.Linear(self.k[-1], fc_n)
         self.fc2 = nn.Linear(fc_n, nclasses)
-
+        self.stn = stn
     def forward(self, x, mesh):
 
         for i in range(len(self.k) - 1):
@@ -182,15 +236,18 @@ class MResConv(nn.Module):
 class MeshEncoderDecoder(nn.Module):
     """Network for fully-convolutional tasks (segmentation)
     """
-    def __init__(self, pools, down_convs, up_convs, blocks=0, transfer_data=True):
+    def __init__(self, pools, down_convs, up_convs, blocks=0, transfer_data=True, stn = None):
         super(MeshEncoderDecoder, self).__init__()
         self.transfer_data = transfer_data
         self.encoder = MeshEncoder(pools, down_convs, blocks=blocks)
         unrolls = pools[:-1].copy()
         unrolls.reverse()
         self.decoder = MeshDecoder(unrolls, up_convs, blocks=blocks, transfer_data=transfer_data)
-
+        self.stn = stn
     def forward(self, x, meshes):
+        y = x[:, 0:3, :].clone().cuda()
+        trans_inp = self.stn(y)
+        x[:, 0:3, :] = torch.bmm(trans_inp, y)
         fe, before_pool = self.encoder((x, meshes))
         fe = self.decoder((fe, meshes), before_pool)
         return fe

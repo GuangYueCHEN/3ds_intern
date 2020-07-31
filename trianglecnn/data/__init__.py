@@ -24,7 +24,8 @@ class DataLoader:
             batch_size=opt.batch_size,
             shuffle=not opt.serial_batches,
             num_workers=int(opt.num_threads),
-            collate_fn=collate_fn)
+            collate_fn=collate_fn,
+            drop_last=True)
 
     def __len__(self):
         return min(len(self.dataset), self.opt.max_dataset_size)

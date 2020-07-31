@@ -48,7 +48,9 @@ class BaseDataset(data.Dataset):
             transform_dict = pickle.load(f)
             print('loaded mean / std from cache')
             self.mean = transform_dict['mean']
+            self.mean[0:2] = 0.
             self.std = transform_dict['std']
+            self.std[0:2] = 1.
             self.ninput_channels = transform_dict['ninput_channels']
 
 

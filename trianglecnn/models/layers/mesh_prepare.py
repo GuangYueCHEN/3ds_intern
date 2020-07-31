@@ -2,6 +2,7 @@ import numpy as np
 import os
 import ntpath
 import heapq
+import scipy.linalg as linalg
 TOLERENCE = 1.e-6
 
 def fill_mesh(mesh2fill, file: str, opt):
@@ -70,6 +71,7 @@ def from_scratch(file, opt):
 
     faces, areas = remove_non_manifolds(mesh_data, faces)
     if opt.num_aug > 1:
+        mesh_data.vs = rotation(mesh_data.vs)
         faces, areas = augmentation(mesh_data, opt, faces, areas)
     mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
     _, edge_faces, edges_dict = get_edge_faces(faces)
@@ -200,6 +202,17 @@ def compute_face_normals_and_areas(mesh, faces):
 
 
 # Data augmentation methods
+def rotation(vs):
+    def rotate_mat( axis, radian):
+        return linalg.expm(np.cross(np.eye(3), axis / linalg.norm(axis) * radian))
+
+    axis = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]  # 分别是x,y和z轴,也可以自定义旋转轴
+    for i in range(3):
+        rot_matrix = rotate_mat(axis[i], np.random.uniform(0, np.pi))
+        vs = np.dot(vs, rot_matrix)
+    return vs
+
+
 def augmentation(mesh, opt, faces=None, areas = None):
     if hasattr(opt, 'scale_verts') and opt.scale_verts:
         scale_verts(mesh)
@@ -410,7 +423,7 @@ def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug = None):
                 if seg_labels[two_faces[0]] != seg_labels[two_faces[1]]:
                     continue
             new_edge = tuple(sorted(list(set(faces[edge_info[2]]) ^ set(faces[edge_info[3]]))))
-            if aug and get_max_angles(mesh, edge_info[0], edge_info[1], new_edge[0], new_edge[1]) > 1.55:
+            if get_max_angles(mesh, edge_info[0], edge_info[1], new_edge[0], new_edge[1]) > 1.55:
                 continue
             if new_edge in edges_dict:
                 continue
@@ -493,7 +506,7 @@ def extract_features(mesh):
     # done
     with np.errstate(divide='raise'):
         try:
-            for extractor in [symmetric_ratios, area_ratios, symmetric_opposite_angles, normal, dihedral_angle]:
+            for extractor in [normal, symmetric_ratios, area_ratios, symmetric_opposite_angles, dihedral_angle]:
                 feature = extractor(mesh)
                 features.append(feature)
             features_curvature = curvature(mesh)
