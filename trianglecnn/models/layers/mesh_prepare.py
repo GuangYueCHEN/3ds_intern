@@ -276,18 +276,20 @@ def slide_verts(mesh, prct):
     vids = np.random.permutation(len(mesh.ve))
     target = int(prct * len(vids))
     shifted = 0
+    '''a = np.sum(np.abs(curvatures_min) < 0.01)
+    b = np.sum(np.abs(curvatures_max) < 0.01)'''
     for vi in vids:
         if shifted < target:
-            main1 = curvatures_min[vi]
-            main2 = curvatures_max[vi]
+            main1 = abs(curvatures_min[vi])
+            main2 = abs(curvatures_max[vi])
             edges = mesh.ve[vi]
-            if main1 < 0.1 and main2 < 0.1:
+            if main1 < 0.01 and main2 < 0.01:
                 edge = mesh.edges[np.random.choice(edges)]
                 vi_t = edge[1] if vi == edge[0] else edge[0]
                 nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
                 mesh.vs[vi] = nv
                 shifted += 1
-            elif main1 < 0.1:
+            elif main1 < 0.01:
                 vi_ts = []
                 norms = []
                 for edge in mesh.edges[edges]:
@@ -296,14 +298,15 @@ def slide_verts(mesh, prct):
                     norms.append(np.linalg.norm(np.cross(mesh.vs[vi_t] - mesh.vs[vi], vector)))
                     vi_ts.append(vi_t)
                 vi_t = vi_ts[np.argmin(norms)]
-                nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
+                nv = mesh.vs[vi] + np.random.uniform(0.2, 0.8) * (mesh.vs[vi_t] - mesh.vs[vi])
                 mesh.vs[vi] = nv
                 shifted += 1
         else:
             break
     mesh.shifted = shifted / len(mesh.ve)
     '''print("shift")
-    print(shifted)'''
+    print(shifted)
+    export_obj(mesh, file="./datasets/test_curvature/%s" % (mesh.filename))'''
 
 def export_obj(mesh, file=None, vcolor=None):
 
