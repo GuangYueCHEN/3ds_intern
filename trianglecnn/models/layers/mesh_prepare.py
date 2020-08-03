@@ -206,7 +206,7 @@ def rotation(vs):
     def rotate_mat( axis, radian):
         return linalg.expm(np.cross(np.eye(3), axis / linalg.norm(axis) * radian))
 
-    axis = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]  # 分别是x,y和z轴,也可以自定义旋转轴
+    axis = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
     for i in range(3):
         rot_matrix = rotate_mat(axis[i], np.random.uniform(0, np.pi))
         vs = np.dot(vs, rot_matrix)
@@ -254,7 +254,7 @@ def aug_triangulation(mesh, num, faces, areas, dataroot):
             new_faces = []
             new_faces.append([faces[id, 1], v_2, faces[id, 2]])
             new_faces.append([faces[id, 2], v_2, faces[id, 0]])
-            faces =np.concatenate((faces, np.array(new_faces, dtype= int)), axis =0)
+            faces = np.concatenate((faces, np.array(new_faces, dtype= int)), axis =0)
             areas[id] = area / 3
             new_areas = [area, area]
             areas = np.concatenate((areas, np.array(new_areas, dtype=int)), axis=0)
@@ -263,8 +263,8 @@ def aug_triangulation(mesh, num, faces, areas, dataroot):
             sseg_labels = np.append(sseg_labels, sseg_labels[id].reshape(1, sseg_labels.shape[1]), axis=0)
             sseg_labels = np.append(sseg_labels, sseg_labels[id].reshape(1, sseg_labels.shape[1]), axis=0)
             count += 2
-    write_seg(seg_labels, seg_file);
-    write_sseg(sseg_labels, sseg_file);
+    write_seg(seg_labels, seg_file)
+    write_sseg(sseg_labels, sseg_file)
     return faces, areas
 
 
@@ -281,13 +281,13 @@ def slide_verts(mesh, prct):
             main1 = curvatures_min[vi]
             main2 = curvatures_max[vi]
             edges = mesh.ve[vi]
-            if main1 < 0.01 and main2 < 0.01:
+            if main1 < 0.1 and main2 < 0.1:
                 edge = mesh.edges[np.random.choice(edges)]
                 vi_t = edge[1] if vi == edge[0] else edge[0]
                 nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
                 mesh.vs[vi] = nv
                 shifted += 1
-            elif main1 < 0.01:
+            elif main1 < 0.1:
                 vi_ts = []
                 norms = []
                 for edge in mesh.edges[edges]:
@@ -296,15 +296,14 @@ def slide_verts(mesh, prct):
                     norms.append(np.linalg.norm(np.cross(mesh.vs[vi_t] - mesh.vs[vi], vector)))
                     vi_ts.append(vi_t)
                 vi_t = vi_ts[np.argmin(norms)]
-                nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5)  * (mesh.vs[vi_t] - mesh.vs[vi])
+                nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
                 mesh.vs[vi] = nv
                 shifted += 1
         else:
             break
     mesh.shifted = shifted / len(mesh.ve)
-'''    print(mesh.filename)
-    print(shifted)
-    export_obj(mesh, file="./datasets/test_curvature/%s.obj" % (mesh.filename))'''
+    '''print("shift")
+    print(shifted)'''
 
 def export_obj(mesh, file=None, vcolor=None):
 
@@ -396,7 +395,7 @@ def get_max_angles(mesh, v1, v2, v3, v4):
     return np.max(angles)
 
 
-def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug = None):
+def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug=None):
     edge_count, edge_faces, edges_dict = get_edge_faces(faces)
     dihedral = angles_from_faces(mesh, edge_faces[:, 2:], faces)
     edges2flip = np.random.permutation(edge_count)
@@ -423,7 +422,7 @@ def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug = None):
                 if seg_labels[two_faces[0]] != seg_labels[two_faces[1]]:
                     continue
             new_edge = tuple(sorted(list(set(faces[edge_info[2]]) ^ set(faces[edge_info[3]]))))
-            if get_max_angles(mesh, edge_info[0], edge_info[1], new_edge[0], new_edge[1]) > 1.55:
+            if get_max_angles(mesh, edge_info[0], edge_info[1], new_edge[0], new_edge[1]) >= np.pi/2:
                 continue
             if new_edge in edges_dict:
                 continue
@@ -448,7 +447,8 @@ def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug = None):
                                 if face_nb == edge_info[2 + (i + 1) % 2]:
                                     edge_faces[cur_edge_key, 2 + idx] = face_id
                 flipped += 1
-    '''print(flipped)'''
+    '''print("flip")
+    print(flipped)'''
     return faces, areas
 
 
@@ -569,6 +569,8 @@ def area_ratios(mesh):
         ratios.append(ratios_i)
     ratios = np.array(ratios)
     return np.sort(ratios, axis=0)
+
+
 '''
 def get_edge_points(mesh):
     edge_points = np.zeros([mesh.edges_count, 4], dtype=np.int32)
@@ -775,6 +777,7 @@ def curvature_of_vs(mesh):
         else:
             min_curvature_vector = np.array([eigenvectors[1, 0], eigenvectors[1, 1], 0.], dtype=float)
         n_e = np.array([0., 0., 1.])
+        n_v = normals_vetices[v_id]
         mat_rotation = rotate_frame(n_e, n_v)
         min_curvature_vectors.append(np.dot(mat_rotation, min_curvature_vector))
         eigenvalues = sorted(eigenvalues, key=abs)

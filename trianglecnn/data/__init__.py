@@ -2,7 +2,7 @@ import torch.utils.data
 from data.base_dataset import collate_fn
 
 def CreateDataset(opt):
-    """loads dataset class"""
+    """loads dataset class  """
 
     if opt.dataset_mode == 'segmentation':
         from data.segmentation_data import SegmentationData
@@ -16,7 +16,7 @@ def CreateDataset(opt):
 class DataLoader:
     """multi-threaded data loading"""
 
-    def __init__(self, opt):
+    def __init__(self, opt, drop_last = False):
         self.opt = opt
         self.dataset = CreateDataset(opt)
         self.dataloader = torch.utils.data.DataLoader(
@@ -25,7 +25,7 @@ class DataLoader:
             shuffle=not opt.serial_batches,
             num_workers=int(opt.num_threads),
             collate_fn=collate_fn,
-            drop_last=True)
+            drop_last=drop_last)
 
     def __len__(self):
         return min(len(self.dataset), self.opt.max_dataset_size)
