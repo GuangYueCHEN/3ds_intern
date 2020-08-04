@@ -78,6 +78,10 @@ def from_scratch(file, opt):
     build_gemm(mesh_data, faces, areas, edge_faces)
     if opt.num_aug > 1:
         post_augmentation(mesh_data, opt)
+    '''export_obj(mesh_data, file="./datasets/test_curvature/out/%s" % (mesh_data.filename))
+    print(mesh_data.filename)'''
+    _,  areas = compute_face_normals_and_areas(mesh_data, mesh_data.faces)
+    mesh_data.areas = np.array(areas, dtype=np.float32) / np.sum(areas)
     set_edge_lengths(mesh_data)
     mesh_data.features = extract_features(mesh_data)
     return mesh_data
@@ -187,7 +191,6 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     mesh.edge_faces = np.array(edge_faces, dtype=np.int32)
     mesh.faces_edges = np.array(faces_edges, dtype=np.int32)
     mesh.areas = np.array(face_areas, dtype=np.float32) / np.sum(face_areas)
-    '''export_obj(mesh, file="./datasets/test_curvature/%s" % (mesh.filename))'''
 
 
 
@@ -378,7 +381,7 @@ def write_sseg(labels, sseg_file):
         return
     np.savetxt(write_file, labels/sum, delimiter=' ', newline='\n', fmt='%.2e')
 
-
+'''
 def get_max_angles(mesh, v1, v2, v3, v4):
     edge_a = mesh.vs[v1] - mesh.vs[v2]
     edge_b = mesh.vs[v3] - mesh.vs[v1]
@@ -395,7 +398,7 @@ def get_max_angles(mesh, v1, v2, v3, v4):
     angles[1] = np.arccos(np.sum(-edge_a * edge_b))
     angles[2] = np.arccos(np.sum(edge_a * edge_e))
     angles[3] = np.arccos(np.sum(-edge_a * edge_d))
-    return np.max(angles)
+    return np.max(angles)'''
 
 
 def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug=None):
@@ -425,8 +428,8 @@ def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug=None):
                 if seg_labels[two_faces[0]] != seg_labels[two_faces[1]]:
                     continue
             new_edge = tuple(sorted(list(set(faces[edge_info[2]]) ^ set(faces[edge_info[3]]))))
-            if get_max_angles(mesh, edge_info[0], edge_info[1], new_edge[0], new_edge[1]) >= np.pi/2:
-                continue
+            """if get_max_angles(mesh, edge_info[0], edge_info[1], new_edge[0], new_edge[1]) >= np.pi/2:
+                continue"""
             if new_edge in edges_dict:
                 continue
             new_faces = np.array(
@@ -437,8 +440,12 @@ def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug=None):
                 edges_dict[new_edge] = edge_key
                 rebuild_face(faces[edge_info[2]], new_faces[0])
                 rebuild_face(faces[edge_info[3]], new_faces[1])
-                area = areas[edge_info[2]] + areas[edge_info[3]] / 2.
-                areas[edge_info[2]] = areas[edge_info[3]] = area
+                face_normals = np.cross(mesh.vs[new_faces[0, 1]] - mesh.vs[new_faces[0, 0]],
+                                        mesh.vs[new_faces[0, 2]] - mesh.vs[new_faces[0, 1]])
+                areas[edge_info[2]] = np.sqrt((face_normals ** 2).sum())/2.
+                face_normals = np.cross(mesh.vs[new_faces[1, 1]] - mesh.vs[new_faces[1, 0]],
+                                        mesh.vs[new_faces[1, 2]] - mesh.vs[new_faces[1, 1]])
+                areas[edge_info[3]] = np.sqrt((face_normals ** 2).sum()) / 2.
                 for i, face_id in enumerate([edge_info[2], edge_info[3]]):
                     cur_face = faces[face_id]
                     for j in range(3):
@@ -468,7 +475,7 @@ def check_area(mesh, faces):
                             mesh.vs[faces[:, 2]] - mesh.vs[faces[:, 1]])
     face_areas = np.sqrt((face_normals ** 2).sum(axis=1))
     face_areas *= 0.5
-    return face_areas[0] > 0 and face_areas[1] > 0
+    return face_areas[0] > 1.e-6 and face_areas[1] > 1.e-6
 
 
 def get_edge_faces(faces):
@@ -749,7 +756,17 @@ def curvature_of_vs(mesh):
             mat[2, 2] += nc_input_y * nc_input_y
             b[2] += nc_input_y * nc_output_y
         mat[2, 1] = mat[0, 1] = mat[1, 2] = mat[1, 0]
-        mat = np.linalg.inv(mat)
+        try:
+            mat = np.linalg.inv(mat)
+        except np.linalg.linalg.LinAlgError:
+            print(n_t)
+            print(v1)
+            print(v2)
+            edge_a = mesh.vs[face[ 2]] - mesh.vs[face[  1]]
+            edge_b = mesh.vs[face[ 0]] - mesh.vs[face[ 1]]
+            normals = np.cross(edge_a, edge_b)
+            div = fixed_division(np.linalg.norm(normals, ord=2 ), epsilon=1.e-6)
+            normals /= div[np.newaxis]
         tmp = np.dot(mat, b)
         second_ff = np.array([[tmp[0], tmp[1]], [tmp[1], tmp[2]]]).reshape(2, 2)
         for i in range(3):

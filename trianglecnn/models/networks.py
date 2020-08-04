@@ -245,7 +245,7 @@ class MeshEncoderDecoder(nn.Module):
         self.decoder = MeshDecoder(unrolls, up_convs, blocks=blocks, transfer_data=transfer_data)
         self.stn = stn
     def forward(self, x, meshes):
-        y = x[:, 0:3, :].clone().cuda()
+        y = x[:, 0:3, :].clone().to(x.device)
         trans_inp = self.stn(y)
         x[:, 0:3, :] = torch.bmm(trans_inp, y)
         fe, before_pool = self.encoder((x, meshes))
