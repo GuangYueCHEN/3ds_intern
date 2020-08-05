@@ -59,6 +59,10 @@ class ClassifierModel:
 
     def backward(self, out):
         self.loss = self.criterion(out, self.labels)
+        if self.net.module:
+            self.loss += 0.001 * networks.orthogonality_constraint(self.net.module.trans_inp)
+        else:
+            self.loss += 0.001 * networks.orthogonality_constraint(self.net.trans_inp)
         self.loss.backward()
 
     def optimize_parameters(self):

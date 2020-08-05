@@ -175,6 +175,23 @@ class PointSpatialTransformer(nn.Module):
         return x
 
 
+def orthogonality_constraint(A):
+    """
+    Regularization function to constrain A as an orthogonal matrix
+    Parameters:
+    -----------
+    A : torch.Tensor
+        A batch square matrix of dimensions batch_size x dim x dim
+    """
+    batch = A.size(0)
+    dim = A.size(1)
+    I = torch.eye(dim)
+    I = I.reshape((1, dim, dim))
+    I = I.repeat(batch, 1, 1)
+    if A.is_cuda:
+        I = I.cuda()
+    return F.mse_loss(I, torch.bmm(A, A.transpose(1, 2)))
+
 class MeshConvNet(nn.Module):
     """Network for learning a global shape descriptor (classification)
     """
@@ -184,6 +201,7 @@ class MeshConvNet(nn.Module):
         self.k = [nf0] + conv_res
         self.res = [input_res] + pool_res
         norm_args = get_norm_args(norm_layer, self.k[1:])
+        self.trans_inp = None
 
         for i, ki in enumerate(self.k[:-1]):
             setattr(self, 'conv{}'.format(i), MResConv(ki, self.k[i + 1], nresblocks))
@@ -197,7 +215,9 @@ class MeshConvNet(nn.Module):
         self.fc2 = nn.Linear(fc_n, nclasses)
         self.stn = stn
     def forward(self, x, mesh):
-
+        y = x[:, 0:3, :].clone().to(x.device)
+        self.trans_inp = self.stn(y)
+        x[:, 0:3, :] = torch.bmm(self.trans_inp, y)
         for i in range(len(self.k) - 1):
             x = getattr(self, 'conv{}'.format(i))(x, mesh)
             x = F.relu(getattr(self, 'norm{}'.format(i))(x))
@@ -244,10 +264,11 @@ class MeshEncoderDecoder(nn.Module):
         unrolls.reverse()
         self.decoder = MeshDecoder(unrolls, up_convs, blocks=blocks, transfer_data=transfer_data)
         self.stn = stn
+        self.trans_inp = None
     def forward(self, x, meshes):
         y = x[:, 0:3, :].clone().to(x.device)
-        trans_inp = self.stn(y)
-        x[:, 0:3, :] = torch.bmm(trans_inp, y)
+        self.trans_inp = self.stn(y)
+        x[:, 0:3, :] = torch.bmm(self.trans_inp, y)
         fe, before_pool = self.encoder((x, meshes))
         fe = self.decoder((fe, meshes), before_pool)
         return fe
