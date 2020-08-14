@@ -29,7 +29,6 @@ class SegmentationData(BaseDataset):
         mesh = Mesh(file=path, opt=self.opt, hold_history=True, export_folder=self.opt.export_folder)
         meta = {}
         meta['mesh'] = mesh
-        '''label = read_seg(self.seg_paths[index]) - self.offset'''
         if self.opt.edge_split :
             path_index = os.path.join( os.path.dirname(self.seg_paths[index]), 'cache\\' + os.path.basename(self.seg_paths[index]))
             label = read_seg(path_index) - self.offset
@@ -37,7 +36,6 @@ class SegmentationData(BaseDataset):
             label = read_seg(self.seg_paths[index]) - self.offset
         label = pad(label, self.opt.ninput_faces, val=-1, dim=0)
         meta['label'] = label
-        ''' soft_label = read_sseg(self.sseg_paths[index])'''
         if self.opt.edge_split :
             path_index = os.path.join(os.path.dirname(self.sseg_paths[index]),
                                   'cache\\' + os.path.basename(self.sseg_paths[index]))
