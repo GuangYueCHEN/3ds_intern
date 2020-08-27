@@ -624,8 +624,11 @@ def get_normals(mesh,  index):
     face_neighbor_id = mesh.gemm_faces[:, index]
     v_neighbor_ids = []
     for face_id, face in enumerate(mesh.faces):
-        v_neighbor_id = np.setdiff1d(mesh.faces[face_neighbor_id[face_id]], mesh.faces[face_id])[0]
-        v_neighbor_ids.append(v_neighbor_id)
+        v_neighbor_id = np.setdiff1d(mesh.faces[face_neighbor_id[face_id]], mesh.faces[face_id])
+        if face_neighbor_id[face_id] == -1:
+            v_neighbor_ids.append(mesh.faces[face_id, index])
+            continue
+        v_neighbor_ids.append(v_neighbor_id[0])
     edge_a = mesh.vs[mesh.faces[:, (index + 2) % 3]] - mesh.vs[mesh.faces[:, (index + 1) % 3]]
     edge_b = mesh.vs[mesh.faces[:, index]] - mesh.vs[mesh.faces[:, (index + 1) % 3]]
     edge_b_inverse = mesh.vs[mesh.faces[:, (index + 1) % 3]] - mesh.vs[mesh.faces[:, index]]

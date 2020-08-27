@@ -27,9 +27,9 @@ class ClassificationData(BaseDataset):
         mesh = Mesh(file=path, opt=self.opt, hold_history=False, export_folder=self.opt.export_folder)
         meta = {'mesh': mesh, 'label': label}
         # get edge features
-        edge_features = mesh.extract_features()
-        edge_features = pad(edge_features, self.opt.ninput_edges)
-        meta['edge_features'] = (edge_features - self.mean) / self.std
+        face_features = mesh.extract_features()
+        face_features = pad(face_features, self.opt.ninput_faces)
+        meta['face_features'] = (face_features - self.mean) / self.std
         return meta
 
     def __len__(self):
