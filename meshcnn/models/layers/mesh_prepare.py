@@ -66,7 +66,7 @@ def from_scratch(file, opt):
             mesh_data.v_mask = np.ones(len(mesh_data.vs), dtype=bool)
     if opt.num_aug > 1:
         faces = augmentation(mesh_data, opt, faces)
-    build_gemm(mesh_data, faces, face_areas)
+    build_gemm(mesh_data, faces, face_areas,opt)
     if opt.num_aug > 1:
         post_augmentation(mesh_data, opt)
     mesh_data.features = extract_features(mesh_data)
@@ -183,6 +183,10 @@ def read_sseg(sseg_file):
     sseg_labels = np.array(sseg_labels > 0, dtype=np.int32)
     return sseg_labels
 
+def read_sseg2(sseg_file):
+    sseg_labels = read_seg(sseg_file)
+    sseg_labels = np.array(sseg_labels, dtype='float64')
+    return sseg_labels
 
 def write_seg(labels, seg):
     dir_name = os.path.join(os.path.dirname(seg), 'cache')
@@ -277,7 +281,7 @@ def remove_non_manifolds(mesh, faces):
     return faces[mask], face_areas[mask]
 
 
-def build_gemm(mesh, faces, face_areas):
+def build_gemm(mesh, faces, face_areas,opt):
     """
     gemm_edges: array (#E x 4) of the 4 one-ring neighbors for each edge
     sides: array (#E x 4) indices (values of: 0,1,2,3) indicating where an edge is in the gemm_edge entry of the 4 neighboring edges
@@ -323,6 +327,36 @@ def build_gemm(mesh, faces, face_areas):
     mesh.sides = np.array(sides, dtype=np.int64)
     mesh.edges_count = edges_count
     mesh.edge_areas = np.array(mesh.edge_areas, dtype=np.float32) / np.sum(face_areas) #todo whats the difference between edge_areas and edge_lenghts?
+    export_face_labels(faces,mesh,opt)
+
+def export_face_labels(faces,mesh_data,opt):
+    seg_file = os.path.join(opt.dataroot, 'seg/' + os.path.splitext(mesh_data.filename)[0] + '.eseg')
+    sseg_file = os.path.join(opt.dataroot, 'sseg/' + os.path.splitext(mesh_data.filename)[0] + '.seseg')
+    assert (os.path.isfile(seg_file))
+    seg_labels = read_seg(seg_file)
+    sseg_labels = read_sseg2(sseg_file)
+    seg_face_labels = []
+    sseg_face_labels =[]
+    for face_id, face in enumerate(faces):
+        face_edges = []
+        for i in range(3):
+            cur_edge = (face[i], face[(i + 1) % 3])
+            for j, edge in enumerate(mesh_data.edges):
+                if set(edge) == set(cur_edge):
+                    face_edges.append(j)
+        assert(len(face_edges) == 3)
+        sseg = np.sum(sseg_labels[face_edges],axis=0)
+        i = np.argmax(sseg)
+        sseg = np.zeros( len(sseg_labels[0]) )
+        sseg[i] = 1.
+        seg = i + 1
+        seg_face_labels.append(seg)
+        sseg_face_labels.append(sseg)
+    seg_face_labels = np.array(seg_face_labels, dtype= int)
+    sseg_face_labels = np.array(sseg_face_labels, dtype = float)
+    write_seg(seg_face_labels, seg_file)
+    write_sseg(sseg_face_labels, sseg_file)
+
 
 
 def compute_face_normals_and_areas(mesh, faces):

@@ -49,6 +49,7 @@ class MeshPool(nn.Module):
             if mask[face_id]:
                 self.__pool_face(mesh, face_id, mask, face_groups)
         mesh.clean(mask, face_groups)
+        """ mesh.export(name = 'pool'+str(self.__out_target))"""
         fe = face_groups.rebuild_features(self.__fe[mesh_index], mask, self.__out_target)
         self.__updated_fe[mesh_index] = fe
 
@@ -56,7 +57,7 @@ class MeshPool(nn.Module):
         if self.is_boundaries(mesh, face_id):
             print("pool face is boundary")
             return False
-        elif self.__clean_side(mesh, face_id, mask, face_groups) and self.__is_one_ring_valid(mesh, face_id, mask) \
+        elif self.__clean_side(mesh, face_id, mask, face_groups) and self.__is_link_condition_valid(mesh, face_id, mask) \
                 and mask[face_id]:
             for i in range(3):
                 self.__pool_side(mesh, face_id, mask, face_groups, i)
@@ -121,16 +122,10 @@ class MeshPool(nn.Module):
         heapify(heap)
         return heap
 
-    @staticmethod
-    def is_boundaries(mesh, face_id):
-        for face in mesh.gemm_faces[face_id]:
-            if face == -1 or -1 in mesh.gemm_faces[face]:
-                return True
-        return False
 
-    @staticmethod
-    def __is_one_ring_valid(mesh, face_id, mask):
+    def __is_link_condition_valid(self, mesh, face_id, mask):
         # done
+        face = mesh.faces[face_id]
         f_a = mesh.vf[mesh.faces[face_id, 0]]
         f_b = mesh.vf[mesh.faces[face_id, 1]]
         f_c = mesh.vf[mesh.faces[face_id, 2]]
@@ -143,7 +138,32 @@ class MeshPool(nn.Module):
         for f in f_c:
             if not mask[f]:
                 f_c.remove(f)
-        return len(np.intersect1d(f_a, f_b)) == len(np.intersect1d(f_c, f_b)) == len(np.intersect1d(f_a, f_c)) == 2
+        v_a = set(mesh.faces[f_a].flatten())
+        v_b = set(mesh.faces[f_b].flatten())
+        v_c = set(mesh.faces[f_c].flatten())
+        e_ab = set(mesh.faces[face_id, 0:2])
+        e_bc = set(mesh.faces[face_id, 1:3])
+        e_ca = set(mesh.faces[face_id, [0, 2]])
+        if not len(v_a.intersection(v_b).difference(e_ab)) == len(v_b.intersection(v_c).difference(e_bc)) == \
+                len(v_c.intersection(v_a).difference(e_ca)) == 2:
+            return False
+        else:
+            return self.check_link(mesh, v_a, v_b, e_ab) and self.check_link(mesh, v_b, v_c, e_bc) and self.check_link(mesh, v_c, v_a, e_ca)
+
+    @staticmethod
+    def is_boundaries(mesh, face_id):
+        for face in mesh.gemm_faces[face_id]:
+            if face == -1 or -1 in mesh.gemm_faces[face]:
+                return True
+        return False
+
+    @staticmethod
+    def check_link(mesh, v_a, v_b, e_ab):
+        two_points = np.array(list(v_a.intersection(v_b).difference(e_ab)))
+        for face in mesh.faces:
+            if len(np.intersect1d(face, two_points)) == 2:
+                return False
+        return True
 
     @staticmethod
     def __redirect_side_faces(mesh, face_a_id, face_ids_a):
@@ -215,3 +235,4 @@ class MeshPool(nn.Module):
     def __remove_group(mesh, face_groups, index):
         face_groups.remove_group(index)
         mesh.remove_group(index)
+
