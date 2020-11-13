@@ -1,7 +1,7 @@
 import torch
 from . import networks
 from os.path import join
-from util.util import seg_accuracy, print_network
+from util.util import seg_accuracy, print_network, gen_accuracy
 
 
 class ClassifierModel:
@@ -19,12 +19,13 @@ class ClassifierModel:
         self.device = torch.device('cuda:{}'.format(self.gpu_ids[0])) if self.gpu_ids else torch.device('cpu')
         self.save_dir = join(opt.checkpoints_dir, opt.name)
         self.optimizer = None
-        self.edge_features = None
+        self.face_features = None
         self.labels = None
         self.mesh = None
         self.soft_label = None
         self.loss = None
-
+        if opt.arch == "meshgnet":
+            self.input_mesh = None
         #
         self.nclasses = opt.nclasses
 
@@ -43,23 +44,30 @@ class ClassifierModel:
             self.load_network(opt.which_epoch)
 
     def set_input(self, data):
-        input_edge_features = torch.from_numpy(data['face_features']).float()
-        labels = torch.from_numpy(data['label']).long()
+        input_face_features = torch.from_numpy(data['face_features']).float()
+        if not self.opt.dataset_mode == 'generation':
+            labels = torch.from_numpy(data['label']).long()
+            self.labels = labels.to(self.device)
         # set inputs
-        self.edge_features = input_edge_features.to(self.device).requires_grad_(self.is_train)
-        self.labels = labels.to(self.device)
+        self.face_features = input_face_features.to(self.device).requires_grad_(self.is_train)
         self.mesh = data['mesh']
+        if self.opt.arch == "meshgnet":
+            import copy
+            self.input_mesh = copy.deepcopy(data['mesh'])
         if self.opt.dataset_mode == 'segmentation' and not self.is_train:
             self.soft_label = torch.from_numpy(data['soft_label'])
 
 
     def forward(self):
-        out = self.net(self.edge_features, self.mesh)
+        out = self.net(self.face_features, self.mesh)
         return out
 
     def backward(self, out):
-        self.loss = self.criterion(out, self.labels)
-        if self.net.module:
+        if self.opt.arch == "meshgnet":
+            self.loss = self.criterion(self.mesh, out, self.input_mesh)
+        else:
+            self.loss = self.criterion(out, self.labels)
+        if len(self.gpu_ids) > 0 and torch.cuda.is_available():
             self.loss += 0.001 * networks.orthogonality_constraint(self.net.module.trans_inp)
         else:
             self.loss += 0.001 * networks.orthogonality_constraint(self.net.trans_inp)
@@ -69,6 +77,10 @@ class ClassifierModel:
         self.optimizer.zero_grad()
         out = self.forward()
         self.backward(out)
+        """for name, param in self.net.named_parameters():
+            print('层:', name, param.size())
+            print('权值梯度', param.grad)
+            print('权值', param)"""
         self.optimizer.step()
 
 
@@ -112,6 +124,8 @@ class ClassifierModel:
         """
         with torch.no_grad():
             out = self.forward()
+            if self.opt.arch == 'meshgnet':
+                return 0., 1
             # compute number of correct
             pred_class = out.data.max(1)[1]
             label_class = self.labels
@@ -119,12 +133,15 @@ class ClassifierModel:
             correct = self.get_accuracy(pred_class, label_class)
         return correct, len(label_class)
 
+
     def get_accuracy(self, pred, labels):
         """computes accuracy for classification / segmentation """
         if self.opt.dataset_mode == 'classification':
             correct = pred.eq(labels).sum()
         elif self.opt.dataset_mode == 'segmentation':
             correct = seg_accuracy(pred, self.soft_label, self.mesh)
+        elif self.opt.dataset_mode == 'genration':
+            correct = gen_accuracy(pred, self.mesh)
         return correct
 
     def export_segmentation(self, pred_seg):

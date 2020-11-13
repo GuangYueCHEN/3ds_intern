@@ -10,6 +10,9 @@ def CreateDataset(opt):
     elif opt.dataset_mode == 'classification':
         from data.classification_data import ClassificationData
         dataset = ClassificationData(opt)
+    elif opt.dataset_mode == 'generation':
+        from data.generation_data import GenerationData
+        dataset = GenerationData(opt)
     return dataset
 
 

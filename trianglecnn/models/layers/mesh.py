@@ -11,7 +11,7 @@ class Mesh:
 
     def __init__(self, file=None, opt=None, hold_history=False, export_folder=''):
         self.vs = self.v_mask = self.filename = self.features = self.areas = None
-        self.edges = self.faces = self.gemm_faces =None
+        self.faces = self.gemm_faces =None
         self.pool_count = 0
         fill_mesh(self, file, opt)
         self.export_folder = export_folder
@@ -77,11 +77,11 @@ class Mesh:
         self.export()
 
 
-    def export(self, file=None, vcolor=None):
+    def export(self, file=None, vcolor=None, name=''):
         if file is None:
             if self.export_folder:
                 filename, file_extension = os.path.splitext(self.filename)
-                file = '%s/%s_%d%s' % (self.export_folder, filename, self.pool_count, file_extension)
+                file = '%s/%s_%d%s%s' % (self.export_folder, filename, self.pool_count,name, file_extension)
             else:
                 return
         vs = self.vs[self.v_mask]
@@ -94,12 +94,12 @@ class Mesh:
                 v1 = np.size(self.v_mask[0:self.faces[face_id][0]]) - np.sum(self.v_mask[0:self.faces[face_id][0]])
                 v2 = np.size(self.v_mask[0:self.faces[face_id][1]]) - np.sum(self.v_mask[0:self.faces[face_id][1]])
                 v3 = np.size(self.v_mask[0:self.faces[face_id][2]]) - np.sum(self.v_mask[0:self.faces[face_id][2]])
-                f.write("f %d %d %d\n" % (self.faces[face_id][0] - v1, self.faces[face_id][1] - v2,
-                                          self.faces[face_id][2] - v3))
+                f.write("f %d %d %d\n" % (self.faces[face_id][0] - v1+1, self.faces[face_id][1] - v2+1,
+                                          self.faces[face_id][2] - v3+1))
             v1 = np.size(self.v_mask[0:self.faces[-1][0]]) - np.sum(self.v_mask[0:self.faces[-1][0]])
             v2 = np.size(self.v_mask[0:self.faces[-1][1]]) - np.sum(self.v_mask[0:self.faces[-1][1]])
             v3 = np.size(self.v_mask[0:self.faces[-1][2]]) - np.sum(self.v_mask[0:self.faces[-1][2]])
-            f.write("f %d %d %d" % (self.faces[-1][0] -v1, self.faces[-1][1]-v2, self.faces[-1][2]-v3))
+            f.write("f %d %d %d" % (self.faces[-1][0] -v1 +1, self.faces[-1][1]-v2 +1, self.faces[-1][2]-v3+1))
 
 
     def export_segments(self, segments):
@@ -129,6 +129,10 @@ class Mesh:
                 with open(file) as old_file:
                     for line in old_file:
                         if line[0] == 'f':
+                            line = line.split()
+                            for k in range(3):
+                                line[k+1] = str(int(line[k+1])-1)
+                            line = ' '.join([str(elem) for elem in line])
                             new_file.write('3 %s %s 255' % (line[1:].strip(), colors[cur_segments[face_key]]))
                             if face_key < len(cur_segments):
                                 face_key += 1
@@ -142,6 +146,8 @@ class Mesh:
             if i < len(self.history_data['faces_mask']):
                 cur_segments = segments[:len(self.history_data['faces_mask'][i])]
                 cur_segments = cur_segments[self.history_data['faces_mask'][i]]
+
+
 
 
     def init_history(self):

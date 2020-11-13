@@ -7,7 +7,7 @@ from heapq import heappop, heapify
 
 
 class MeshPool(nn.Module):
-    
+
     def __init__(self, target, multi_thread=False):
         super(MeshPool, self).__init__()
         self.__out_target = target
@@ -57,8 +57,10 @@ class MeshPool(nn.Module):
         if self.is_boundaries(mesh, face_id):
             print("pool face is boundary")
             return False
-        elif self.__clean_side(mesh, face_id, mask, face_groups) and self.__is_link_condition_valid(mesh, face_id, mask) \
+        elif self.__clean_side(mesh, face_id, mask, face_groups) and self.__is_one_ring_valid(mesh, face_id, mask) \
                 and mask[face_id]:
+            """elif self.__clean_side(mesh, face_id, mask, face_groups) and self.__is_link_condition_valid(mesh, face_id, mask) \
+                and mask[face_id]:"""
             for i in range(3):
                 self.__pool_side(mesh, face_id, mask, face_groups, i)
 
@@ -68,7 +70,7 @@ class MeshPool(nn.Module):
             MeshPool.__remove_group(mesh, face_groups, face_id)
             mesh.faces_count -= 1
             return True
-        else: 
+        else:
             return False
 
     def __clean_side(self, mesh, face_id, mask, face_groups):
@@ -122,9 +124,29 @@ class MeshPool(nn.Module):
         heapify(heap)
         return heap
 
+    def __is_one_ring_valid(self, mesh, face_id, mask):
+        f_a = mesh.vf[mesh.faces[face_id, 0]]
+        f_b = mesh.vf[mesh.faces[face_id, 1]]
+        f_c = mesh.vf[mesh.faces[face_id, 2]]
+        for f in f_a:
+            if not mask[f]:
+                f_a.remove(f)
+        for f in f_b:
+            if not mask[f]:
+                f_b.remove(f)
+        for f in f_c:
+            if not mask[f]:
+                f_c.remove(f)
+        return len(np.intersect1d(f_a, f_b)) == len(np.intersect1d(f_c, f_b)) == len(np.intersect1d(f_a, f_c)) == 2
+
 
     def __is_link_condition_valid(self, mesh, face_id, mask):
-        # done
+        """
+        For the generation network, it's necessary that the output of pooling is manifold,
+        so we check the link condition.
+        however, this function will make the program to be too slow.
+        Thus, for the segmentation task, we can use the function 'is one ring valid' which is initial code of MeshCNN
+        """
         face = mesh.faces[face_id]
         f_a = mesh.vf[mesh.faces[face_id, 0]]
         f_b = mesh.vf[mesh.faces[face_id, 1]]

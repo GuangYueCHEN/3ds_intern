@@ -11,6 +11,9 @@ class MeshUnion:
     def union(self, source, target):
         self.groups[target, :] += self.groups[source, :]
 
+    def copy(self, source):
+        self.groups = torch.cat((self.groups, self.groups[source, :].reshape(1,self.__size)),dim = 0)
+
     def remove_group(self, index):
         return
 
@@ -34,6 +37,16 @@ class MeshUnion:
             padding_b = ConstantPad2d((0, padding_b, 0, 0), 0)
             fe = padding_b(fe)
         return fe
+
+    def rebuild_vs_average(self, vs, target_vs ):
+        v = torch.matmul(self.groups, vs)
+        occurrences = torch.sum(self.groups, 1)
+        v = v / occurrences.unsqueeze(1)
+        padding_b = target_vs - v.shape[0]
+        if padding_b > 0:
+            padding_b = ConstantPad2d((0,0,0,padding_b), 0)
+            v = padding_b(v)
+        return v
 
     def prepare_groups(self, features, mask):
         tensor_mask = torch.from_numpy(mask)

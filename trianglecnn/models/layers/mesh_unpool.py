@@ -13,12 +13,6 @@ class MeshUnpool(nn.Module):
 
     def pad_groups(self, group, unroll_start):
         start, end = group.shape
-        """
-        print(start)
-        print(unroll_start)
-        print(end)
-        print(self.unroll_target)
-        """
         padding_rows = unroll_start - start
         padding_cols = self.unroll_target - end
         if padding_rows != 0 or padding_cols !=0:

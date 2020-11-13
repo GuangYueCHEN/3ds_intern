@@ -9,29 +9,24 @@ def fill_mesh(mesh2fill, file: str, opt):
     load_path = get_mesh_path(file, opt.num_aug)
     if os.path.exists(load_path):
         mesh_data = np.load(load_path, encoding='latin1', allow_pickle=True)
+        mesh2fill.min_edge_length = float(mesh_data['min_edge_length'])
     else:
         mesh_data = from_scratch(file, opt)
-        ''' gemm_edges=mesh_data.gemm_edges,'''
-        np.savez_compressed(load_path, gemm_faces =mesh_data.gemm_faces, vs=mesh_data.vs, edges=mesh_data.edges,faces = mesh_data.faces,
-                            edges_count=mesh_data.edges_count, faces_count=mesh_data.faces_count, ve=mesh_data.ve, vf=mesh_data.vf, v_mask=mesh_data.v_mask, faces_edges =mesh_data.faces_edges, edge_faces= mesh_data.edge_faces,
-                            filename=mesh_data.filename,
-                            edge_lengths=mesh_data.edge_lengths, areas=mesh_data.areas,
-                            features=mesh_data.features)
+        min_edge_length = np.min(mesh_data['edge_lengths'])
+        mesh2fill.min_edge_length = min_edge_length
+        np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
+        np.savez_compressed(load_path, gemm_faces =mesh_data.gemm_faces, vs=mesh_data.vs,faces = mesh_data.faces,
+                            edges_count=mesh_data.edges_count, faces_count=mesh_data.faces_count,  vf=mesh_data.vf, v_mask=mesh_data.v_mask,
+                            filename=mesh_data.filename, areas=mesh_data.areas,
+                            features=mesh_data.features, min_edge_length = min_edge_length)
     mesh2fill.vs = mesh_data['vs']
-    mesh2fill.edges = mesh_data['edges']
     mesh2fill.faces = mesh_data['faces']
-    '''mesh2fill.gemm_edges = mesh_data['gemm_edges']'''
     mesh2fill.gemm_faces = mesh_data['gemm_faces']
-
     mesh2fill.edges_count = int(mesh_data['edges_count'])
     mesh2fill.faces_count = int(mesh_data['faces_count'])
-    mesh2fill.ve = mesh_data['ve']
     mesh2fill.vf = mesh_data['vf']
     mesh2fill.v_mask = mesh_data['v_mask']
     mesh2fill.filename = str(mesh_data['filename'])
-    mesh2fill.edge_lengths = mesh_data['edge_lengths']
-    mesh2fill.faces_edges = mesh_data['faces_edges']
-    mesh2fill.edge_faces = mesh_data['edge_faces']
     mesh2fill.areas = mesh_data['areas']
     mesh2fill.features = mesh_data['features']
 
@@ -78,8 +73,7 @@ def from_scratch(file, opt):
     build_gemm(mesh_data, faces, areas, edge_faces)
     if opt.num_aug > 1:
         post_augmentation(mesh_data, opt)
-    '''export_obj(mesh_data, file="./datasets/test_curvature/out/%s" % (mesh_data.filename))
-    print(mesh_data.filename)'''
+    '''export_obj(mesh_data, file="./datasets/test_curvature/out/%s" % (mesh_data.filename))'''
     _,  areas = compute_face_normals_and_areas(mesh_data, mesh_data.faces)
     mesh_data.areas = np.array(areas, dtype=np.float32) / np.sum(areas)
     set_edge_lengths(mesh_data)
@@ -144,7 +138,6 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
     mesh.ve = [[] for _ in mesh.vs]
     mesh.vf = [[] for _ in mesh.vs]
     face_nb = []
-    '''edge_nb = []'''
     edge2key = dict()
     edges = []
     edges_count = 0
@@ -165,7 +158,6 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
             if edge not in edge2key:
                 edge2key[edge] = edges_count
                 edges.append(list(edge))
-                '''edge_nb.append([-1, -1, -1, -1])'''
                 mesh.ve[edge[0]].append(edges_count)
                 mesh.ve[edge[1]].append(edges_count)
                 nb_count.append(0)
@@ -176,15 +168,9 @@ def build_gemm(mesh, faces, face_areas, edge_faces):
             face_eid.append(edge_key)
             face_nb[face_id][idx] = edge_faces[edge_key][3 if edge_faces[edge_key][2] == face_id else 2]
         faces_edges.append(face_eid)
-        '''for idx, edge in enumerate(face_edges):
-            edge_key = edge2key[edge]
-            edge_nb[edge_key][nb_count[edge_key]] = edge2key[face_edges[(idx + 1) % 3]]
-            edge_nb[edge_key][nb_count[edge_key] + 1] = edge2key[face_edges[(idx + 2) % 3]]
-            nb_count[edge_key] += 2'''
 
     mesh.edges = np.array(edges, dtype=np.int32)
     mesh.gemm_faces = np.array(face_nb, dtype=np.int64)
-    '''mesh.gemm_edges = np.array(edge_nb, dtype=np.int64)'''
     mesh.edges_count = edges_count
     mesh.faces_count = faces_count
     mesh.faces = np.array(faces, dtype=np.int32)
@@ -230,7 +216,7 @@ def augmentation(mesh, opt, faces=None, areas = None):
 
 def post_augmentation(mesh, opt):
     if hasattr(opt, 'slide_verts') and opt.slide_verts:
-        slide_verts(mesh, opt.slide_verts)
+        slide_verts(mesh, opt.slide_verts, opt.slide_verts_threshold)
 
 def aug_triangulation(mesh, num, faces, areas, dataroot):
     count = 0
@@ -271,7 +257,7 @@ def aug_triangulation(mesh, num, faces, areas, dataroot):
     return faces, areas
 
 
-def slide_verts(mesh, prct):
+def slide_verts(mesh, prct, threshold):
     set_edge_lengths(mesh)
     curvatures, min_curvature_vectors = curvature_of_vs(mesh)
     curvatures_min = curvatures[:, 0]
@@ -279,20 +265,18 @@ def slide_verts(mesh, prct):
     vids = np.random.permutation(len(mesh.ve))
     target = int(prct * len(vids))
     shifted = 0
-    '''a = np.sum(np.abs(curvatures_min) < 0.01)
-    b = np.sum(np.abs(curvatures_max) < 0.01)'''
     for vi in vids:
         if shifted < target:
             main1 = abs(curvatures_min[vi])
             main2 = abs(curvatures_max[vi])
             edges = mesh.ve[vi]
-            if main1 < 0.01 and main2 < 0.01:
+            if main1 < threshold and main2 < threshold:
                 edge = mesh.edges[np.random.choice(edges)]
                 vi_t = edge[1] if vi == edge[0] else edge[0]
                 nv = mesh.vs[vi] + np.random.uniform(0.2, 0.5) * (mesh.vs[vi_t] - mesh.vs[vi])
                 mesh.vs[vi] = nv
                 shifted += 1
-            elif main1 < 0.01:
+            elif main1 < threshold:
                 vi_ts = []
                 norms = []
                 for edge in mesh.edges[edges]:
@@ -306,10 +290,8 @@ def slide_verts(mesh, prct):
                 shifted += 1
         else:
             break
+    """print(shifted)"""
     mesh.shifted = shifted / len(mesh.ve)
-    '''print("shift")
-    print(shifted)
-    export_obj(mesh, file="./datasets/test_curvature/%s" % (mesh.filename))'''
 
 def export_obj(mesh, file=None, vcolor=None):
 
@@ -381,32 +363,11 @@ def write_sseg(labels, sseg_file):
         return
     np.savetxt(write_file, labels/sum, delimiter=' ', newline='\n', fmt='%.2e')
 
-'''
-def get_max_angles(mesh, v1, v2, v3, v4):
-    edge_a = mesh.vs[v1] - mesh.vs[v2]
-    edge_b = mesh.vs[v3] - mesh.vs[v1]
-    edge_c = mesh.vs[v3] - mesh.vs[v2]
-    edge_d = mesh.vs[v4] - mesh.vs[v1]
-    edge_e = mesh.vs[v4] - mesh.vs[v2]
-    edge_a /= fixed_division(np.linalg.norm(edge_a, ord=2), epsilon=1.e-6)
-    edge_b /= fixed_division(np.linalg.norm(edge_b, ord=2), epsilon=1.e-6)
-    edge_c /= fixed_division(np.linalg.norm(edge_c, ord=2), epsilon=1.e-6)
-    edge_d /= fixed_division(np.linalg.norm(edge_d, ord=2), epsilon=1.e-6)
-    edge_e /= fixed_division(np.linalg.norm(edge_e, ord=2), epsilon=1.e-6)
-    angles = np.zeros(4)
-    angles[0] = np.arccos(np.sum(edge_a * edge_c))
-    angles[1] = np.arccos(np.sum(-edge_a * edge_b))
-    angles[2] = np.arccos(np.sum(edge_a * edge_e))
-    angles[3] = np.arccos(np.sum(-edge_a * edge_d))
-    return np.max(angles)'''
-
 
 def flip_edges(mesh, prct, faces, areas, mode, dataroot, aug=None):
     edge_count, edge_faces, edges_dict = get_edge_faces(faces)
     dihedral = angles_from_faces(mesh, edge_faces[:, 2:], faces)
     edges2flip = np.random.permutation(edge_count)
-    # print(dihedral.min())
-    # print(dihedral.max())
     target = int(prct * edge_count)
     flipped = 0
     if mode == 'segmentation':
@@ -581,45 +542,6 @@ def area_ratios(mesh):
     return np.sort(ratios, axis=0)
 
 
-'''
-def get_edge_points(mesh):
-    edge_points = np.zeros([mesh.edges_count, 4], dtype=np.int32)
-    for edge_id, edge in enumerate(mesh.edges):
-        edge_points[edge_id] = get_side_points(mesh, edge_id)
-        # edge_points[edge_id, 3:] = mesh.get_side_points(edge_id, 2)
-    return edge_points
-
-
-def get_side_points(mesh, edge_id):
-    # if mesh.gemm_edges[edge_id, side] == -1:
-    #     return mesh.get_side_points(edge_id, ((side + 2) % 4))
-    # else:
-    edge_a = mesh.edges[edge_id]
-
-    if mesh.gemm_edges[edge_id, 0] == -1:
-        edge_b = mesh.edges[mesh.gemm_edges[edge_id, 2]]
-        edge_c = mesh.edges[mesh.gemm_edges[edge_id, 3]]
-    else:
-        edge_b = mesh.edges[mesh.gemm_edges[edge_id, 0]]
-        edge_c = mesh.edges[mesh.gemm_edges[edge_id, 1]]
-    if mesh.gemm_edges[edge_id, 2] == -1:
-        edge_d = mesh.edges[mesh.gemm_edges[edge_id, 0]]
-        edge_e = mesh.edges[mesh.gemm_edges[edge_id, 1]]
-    else:
-        edge_d = mesh.edges[mesh.gemm_edges[edge_id, 2]]
-        edge_e = mesh.edges[mesh.gemm_edges[edge_id, 3]]
-    first_vertex = 0
-    second_vertex = 0
-    third_vertex = 0
-    if edge_a[1] in edge_b:
-        first_vertex = 1
-    if edge_b[1] in edge_c:
-        second_vertex = 1
-    if edge_d[1] in edge_e:
-        third_vertex = 1
-    return [edge_a[first_vertex], edge_a[1 - first_vertex], edge_b[second_vertex], edge_d[third_vertex]]
-'''
-
 def get_normals(mesh,  index):
     face_neighbor_id = mesh.gemm_faces[:, index]
     v_neighbor_ids = []
@@ -670,12 +592,12 @@ def get_area_ratios(mesh, index):
 
 def curvature(mesh):
     """
+    curvatures of vertices
     """
     curvatures_main1 = []
     curvatures_main2 = []
     curvatures_gauss = []
     curvatures_mean = []
-
     curvatures, _ = curvature_of_vs(mesh)
     for i in range(3):
         curvature_i = get_curvature(mesh, i, curvatures)
@@ -696,40 +618,6 @@ def get_curvature(mesh, index, curvatures):
     return np.array(curvatures_i)
 
 
-'''
-def curvature_of_vs(mesh):
-    curvatures = []
-    for vertex_id, edge_one_ring in enumerate(mesh.ve):
-        normals_a, normals_b = get_normals_by_edge(mesh, edge_one_ring)
-        normals_edge = (normals_a + normals_b) / np.linalg.norm(normals_a + normals_b, ord=2, axis=1).reshape(
-            len(normals_a), 1)
-        normals_vertex = np.sum(normals_edge/mesh.edge_lengths[edge_one_ring].reshape(
-            len(normals_edge), 1), axis=0)
-        normals_vertex /=  np.linalg.norm(normals_vertex, ord=2)
-        dot = np.sum(normals_a/ np.linalg.norm(normals_a, ord=2, axis=1).reshape(
-            len(normals_a), 1) * normals_b/ np.linalg.norm(normals_b, ord=2, axis=1).reshape(
-            len(normals_b), 1), axis=1)
-        angles_i = np.pi - np.arccos(dot)
-        shape_operators = np.zeros((3, 3), dtype=float)
-        for edge_index, edge in enumerate(edge_one_ring):
-            edge_vector = mesh.vs[mesh.edges[edge][0]] - mesh.vs[vertex_id] if mesh.edges[edge][1] == vertex_id else \
-            mesh.vs[mesh.edges[edge][1]] - mesh.vs[vertex_id]
-            cross = np.cross(edge_vector / np.linalg.norm(edge_vector), normals_edge[edge_index]).reshape((3,1))
-            he = 2 / np.linalg.norm(edge_vector) * np.cos(angles_i[edge_index] / 2)
-            shape_operator_edge = he * cross.T * cross
-            shape_operators += np.dot(normals_edge[edge_index], normals_vertex) * shape_operator_edge
-        eigenvalues, _ = np.linalg.eig(shape_operators/2)
-        eigenvalues = sorted(eigenvalues, key=abs)
-        curvatures.append([eigenvalues[-1], eigenvalues[-2], eigenvalues[-1] * eigenvalues[-2],
-                             (eigenvalues[-1] + eigenvalues[-2]) / 2.])
-        print(curvatures[-1])
-    return np.array(curvatures)
-
-def get_normals_by_edge(mesh, edge_ids):
-    face_ids = mesh.edge_faces[edge_ids]
-    normals, _ = get_normals(mesh, 0)
-    return normals[face_ids[:, 2]], normals[face_ids[:, 3]]
-'''
 def curvature_of_vs(mesh):
     normals_triangles, _ = get_normals(mesh, 0)
     v1s, v2s = complete_orthogonal_basis(normals_triangles)

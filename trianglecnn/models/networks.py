@@ -7,8 +7,10 @@ from models.layers.mesh_conv import MeshConv
 import torch.nn.functional as F
 from models.layers.mesh_pool import MeshPool
 from models.layers.mesh_unpool import MeshUnpool
-
-
+from models.layers.mesh_unpool_learned import MeshUnpoolLearned, MeshUnpoolOptimisor, MeshUnpoolValenceOptimisor
+from util.Chamfer_Loss import ChamferLoss
+from util.util import pad
+import numpy as np
 ###############################################################################
 # Helper Functions
 ###############################################################################
@@ -106,6 +108,12 @@ def define_classifier(input_nc, ncf, ninput_faces, nclasses, opt, gpu_ids, arch,
         pool_res = [ninput_faces] + opt.pool_res
         net = MeshEncoderDecoder(pool_res, down_convs, up_convs, blocks=opt.resblocks,
                                  transfer_data=True, stn = PointSpatialTransformer(3))
+    elif arch == 'meshgnet':
+        down_convs = [input_nc] + ncf
+        up_convs = ncf[::-1] + [input_nc]
+        pool_res = [ninput_faces] + opt.pool_res
+        net = MeshEncoderGenerator(pool_res, down_convs, up_convs, blocks=opt.resblocks,
+                                 transfer_data=True, stn=PointSpatialTransformer(3))
     else:
         raise NotImplementedError('Encoder model name [%s] is not recognized' % arch)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -115,12 +123,17 @@ def define_loss(opt):
         loss = torch.nn.CrossEntropyLoss()
     elif opt.dataset_mode == 'segmentation':
         loss = torch.nn.CrossEntropyLoss(ignore_index=-1)
+    elif opt.dataset_mode == 'generation':
+        if len(opt.gpu_ids) > 0 and torch.cuda.is_available():
+            loss = ChamferLoss(device='cuda:%d' % opt.gpu_ids[0])
+        else:
+            loss = ChamferLoss(device='cpu')
     return loss
 
 
 
 ##############################################################################
-# Classes For Classification / Segmentation Networks
+# STN spatial transform network
 ##############################################################################
 def _init_identity(module, dim):
     if type(module) == nn.Linear:
@@ -140,7 +153,6 @@ class PointSpatialTransformer(nn.Module):
     arXiv:1612.00593v2 [cs.CV]
     (Supplementary Section C)
     """
-
     def __init__(self, dim=3):
         super(PointSpatialTransformer, self).__init__()
         self.dim = dim
@@ -191,6 +203,11 @@ def orthogonality_constraint(A):
     if A.is_cuda:
         I = I.cuda()
     return F.mse_loss(I, torch.bmm(A, A.transpose(1, 2)))
+
+##############################################################################
+# Classes For Classification / Segmentation / Generation Networks
+##############################################################################
+
 
 class MeshConvNet(nn.Module):
     """Network for learning a global shape descriptor (classification)
@@ -252,6 +269,39 @@ class MResConv(nn.Module):
         x = F.relu(x)
         return x
 
+
+class MeshEncoderGenerator(nn.Module):
+    """Network for fully-convolutional tasks (segmentation)
+    """
+    def __init__(self, pools, down_convs, up_convs, blocks=0, transfer_data=True, stn = None):
+        super(MeshEncoderGenerator, self).__init__()
+        self.transfer_data = transfer_data
+        self.encoder = MeshEncoder(pools, down_convs, blocks=blocks)
+        unrolls = pools[:-1].copy()
+        unrolls.reverse()
+        self.nv = 700
+        self.generator = MeshGenerator(unrolls, self.nv , up_convs, blocks=blocks)
+        self.stn = stn
+        self.trans_inp = None
+    def forward(self, x, meshes):
+        y = x[:, 0:3, :].clone().to(x.device)
+        self.trans_inp = self.stn(y)
+        x[:, 0:3, :] = torch.bmm(self.trans_inp, y)
+        fe, before_pool = self.encoder((x, meshes))
+        vs = self.__extract(meshes, self.nv,x.device)
+        vs = self.generator((fe, vs, meshes))
+        return vs
+
+    def __call__(self, x, meshes):
+        return self.forward(x, meshes)
+
+    @staticmethod
+    def __extract(meshes, nv, device):
+        vs = [pad(mesh.vs, nv, dim=0) for mesh in meshes]
+        vs = np.array(vs)
+        vs = torch.from_numpy(vs).float().to(device)
+        vs.requires_grad_()
+        return vs
 
 class MeshEncoderDecoder(nn.Module):
     """Network for fully-convolutional tasks (segmentation)
@@ -368,6 +418,72 @@ class UpConv(nn.Module):
         return x2
 
 
+class UpConv2(nn.Module):
+    def __init__(self, in_channels, out_channels, blocks=0, unroll=0, residual=True,
+                 batch_norm=True, nv = 600):
+        super(UpConv2, self).__init__()
+        self.residual = residual
+        self.bn = []
+        self.unroll = None
+        self.up_conv = MeshConv(in_channels, out_channels)
+        self.blocks =blocks
+        self.conv1 = []
+        for _ in range(blocks):
+            self.conv1.append(MeshConv(out_channels, out_channels))
+            self.conv1 = nn.ModuleList(self.conv1)
+        self.conv3 = MeshConv(out_channels, 3)
+        self.conv2 = []
+        for _ in range(blocks):
+            self.conv2.append(MeshConv(out_channels, out_channels))
+            self.conv2 = nn.ModuleList(self.conv2)
+        if batch_norm:
+            for _ in range(blocks + 1):
+                self.bn.append(nn.InstanceNorm2d(out_channels))
+            self.bn.append(nn.InstanceNorm2d(3))
+            self.bn = nn.ModuleList(self.bn)
+        if unroll:
+            self.unroll = MeshUnpoolLearned(unroll, nv)
+        self.optimisor = MeshUnpoolOptimisor(name=str(out_channels))
+        self.flip_edge = MeshUnpoolValenceOptimisor(conv=True, channel= out_channels)
+
+    def __call__(self, x):
+        return self.forward(x)
+
+    def forward(self, x):
+        from_up, vs, meshes = x
+        x1 = self.up_conv(from_up, meshes)
+        for idx, conv in enumerate(self.conv1):
+            x2 = conv(x1, meshes)
+            if self.bn:
+                x2 = self.bn[idx + 1](x2)
+            if self.residual:
+                x2 = x2 + x1
+            x2 = F.relu(x2)
+            x1 = x2
+        if self.unroll:
+            x1, vs, meshes = self.unroll(x1.squeeze(3), vs, meshes)
+            x1, meshes = self.flip_edge(meshes, x1)
+            x1 = x1.unsqueeze(3)
+        for idx, conv in enumerate(self.conv2):
+            x2 = conv(x1, meshes)
+            if self.bn:
+                x2 = self.bn[idx + 1](x2)
+            if self.residual:
+                x2 = x2 + x1
+            if idx == self.blocks -1:
+                x2 = F.relu(x2)
+                fe = self.conv3(x2,meshes)
+                fe = torch.tanh(fe)
+                fe = fe.squeeze(3)
+                vs, meshes = self.optimisor(fe, vs, meshes)
+            else:
+                x2 = F.relu(x2)
+                x1 = x2
+        x2 = x2.squeeze(3)
+        return x2, vs
+
+
+
 class MeshEncoder(nn.Module):
     def __init__(self, pools, convs, fcs=None, blocks=0, global_pool=None):
         super(MeshEncoder, self).__init__()
@@ -427,6 +543,33 @@ class MeshEncoder(nn.Module):
         return self.forward(x)
 
 
+class MeshGenerator(nn.Module):
+    def __init__(self, unrolls, nv, convs, blocks=0, batch_norm=True):
+        super(MeshGenerator, self).__init__()
+        self.up_convs = []
+        for i in range(len(convs) - 2):
+            if i < len(unrolls):
+                unroll = unrolls[i]
+            else:
+                unroll = 0
+            self.up_convs.append(UpConv2(convs[i], convs[i + 1], blocks=blocks, unroll=unroll,
+                                        batch_norm=batch_norm, nv =nv))
+        self.final_conv = UpConv2(convs[-2], 3, blocks=blocks, unroll=False,
+                                 batch_norm=batch_norm, nv =nv)
+        self.up_convs = nn.ModuleList(self.up_convs)
+        reset_params(self)
+
+    def forward(self, x):
+        fe, vs, meshes = x
+        for i, up_conv in enumerate(self.up_convs):
+            fe, vs = up_conv((fe, vs, meshes))
+        fe, vs = self.final_conv((fe, vs, meshes))
+        return vs
+
+    def __call__(self, x, encoder_outs=None):
+        return self.forward(x)
+
+
 class MeshDecoder(nn.Module):
     def __init__(self, unrolls, convs, blocks=0, batch_norm=True, transfer_data=True):
         super(MeshDecoder, self).__init__()
@@ -456,7 +599,7 @@ class MeshDecoder(nn.Module):
     def __call__(self, x, encoder_outs=None):
         return self.forward(x, encoder_outs)
 
-def reset_params(model): # todo replace with my init
+def reset_params(model):
     for i, m in enumerate(model.modules()):
         weight_init(m)
 

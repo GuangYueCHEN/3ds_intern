@@ -5,7 +5,7 @@ import torch.nn.functional as F
 class MeshConv(nn.Module):
     """ Computes convolution between edges and 4 incident (1-ring) edge neighbors
     in the forward pass takes:
-    x: edge features (Batch x Features x Edges)
+    x: edge features (Batch x Features x Faces)
     mesh: list of mesh data-structure (len(mesh) == Batch)
     and applies convolution
     """
@@ -26,21 +26,22 @@ class MeshConv(nn.Module):
         return x
 
     def flatten_gemm_inds(self, Gi):
-        (b, ne, nn) = Gi.shape
-        ne += 1
-        batch_n = torch.floor(torch.arange(b * ne, device=Gi.device).float() / ne).view(b, ne)
-        add_fac = batch_n * ne
-        add_fac = add_fac.view(b, ne, 1)
+        (b, nf, nn) = Gi.shape
+        nf += 1
+        batch_n = torch.floor(torch.arange(b * nf, device=Gi.device).float() / nf).view(b, nf)
+        add_fac = batch_n * nf
+        add_fac = add_fac.view(b, nf, 1)
         add_fac = add_fac.repeat(1, 1, nn)
         # flatten Gi
         Gi = Gi.float() + add_fac[:, 1:, :]
         return Gi
 
     def create_GeMM(self, x, Gi):
-        """ gathers the edge features (x) with from the 1-ring indices (Gi)
+        """ gathers the face features (x) with from the 1-ring indices (Gi)
         applys symmetric functions to handle order invariance
         returns a 'fake image' which can use 2d convolution on
-        output dimensions: Batch x Channels x Edges x 5
+        input dimensions: x - Batch x Channels x faces ; Gi - Batch x faces x 4
+        output dimensions: Batch x Channels x faces x 5
         """
         Gishape = Gi.shape
 
@@ -73,10 +74,10 @@ class MeshConv(nn.Module):
         return f
 
     def pad_gemm(self, m, xsz, device):
-        """ extracts one-ring neighbors (4x) -> m.gemm_edges
-        which is of size #edges x 4
-        add the edge_id itself to make #edges x 5
-        then pad to desired size e.g., xsz x 5
+        """ extracts one-ring neighbors (4x) -> m.gemm_faces
+        which is of size #face x 3
+        add the face_id itself to make #faces x 4
+        then pad to desired size e.g., xsz x 4
         """
         padded_gemm = torch.tensor(m.gemm_faces, device=device).float()
         padded_gemm = padded_gemm.requires_grad_()

@@ -31,6 +31,10 @@ def seg_accuracy(predicted, ssegs, meshes):
         correct += (correct_vec.float() * face_areas).sum()
     return correct
 
+def gen_accuracy(meshes_general, meshes):
+    """...TODO"""
+    return
+
 def print_network(net):
     """Print the total number of parameters in the network
     Parameters:
